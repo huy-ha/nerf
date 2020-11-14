@@ -11,6 +11,8 @@ import tensorflow as tf
 import sys
 import os
 from tqdm import tqdm
+from pprint import pprint
+
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
 
@@ -349,16 +351,17 @@ def render_path(render_poses, hwf, chunk, render_kwargs, gt_imgs=None, savedir=N
     rgbs = []
     disps = []
 
-    t = time.time()
-    for i, c2w in enumerate(render_poses):
-        print(i, time.time() - t)
-        t = time.time()
+    for i, c2w in tqdm(
+            enumerate(render_poses),
+            desc=f'Rendering {len(render_poses)} poses',
+            smoothing=0.05,
+            dynamic_ncols=True):
         rgb, disp, acc, _ = render(
             H, W, focal, chunk=chunk, c2w=c2w[:3, :4], **render_kwargs)
         rgbs.append(rgb.numpy())
         disps.append(disp.numpy())
         if i == 0:
-            print(rgb.shape, disp.shape)
+            print('Image Dimensions:', rgb.shape, disp.shape)
 
         if gt_imgs is not None and render_factor == 0:
             p = -10. * np.log10(np.mean(np.square(rgb - gt_imgs[i])))
@@ -423,7 +426,6 @@ def create_nerf(args):
 
     # NDC only good for LLFF-style forward facing data
     if args.dataset_type != 'llff' or args.no_ndc:
-        print('Not ndc!')
         render_kwargs_train['ndc'] = False
         render_kwargs_train['lindisp'] = args.lindisp
 
@@ -441,7 +443,8 @@ def create_nerf(args):
     else:
         ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if
                  ('model_' in f and 'fine' not in f and 'optimizer' not in f)]
-    print('Found ckpts', ckpts)
+    print('Found ckpts')
+    pprint(ckpts)
     if len(ckpts) > 0 and not args.no_reload:
         ft_weights = ckpts[-1]
         print('Reloading from', ft_weights)
@@ -495,7 +498,7 @@ def config_parser():
                         help='do not reload weights from saved ckpt')
     parser.add_argument("--ft_path", type=str, default=None,
                         help='specific weights npy file to reload for coarse network')
-    parser.add_argument("--random_seed", type=int, default=None,
+    parser.add_argument("--random_seed", type=int, default=0,
                         help='fix random seed for repeatability')
 
     # pre-crop options
