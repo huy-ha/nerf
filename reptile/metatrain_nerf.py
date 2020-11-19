@@ -35,13 +35,9 @@ def train(models, grad_vars,
           meta_step_size_final=0.1,
           meta_batch_size=1,
           meta_iters=400000,
-          eval_inner_batch_size=5,
-          eval_inner_iters=50,
           inner_learning_rate=1e-3,
-          eval_interval=10,
-          weight_decay_rate=1,
+          eval_interval=100,
           time_deadline=None,
-          transductive=False,
           reptile_fn=NerfReptile,
           log_fn=print):
     """
@@ -53,6 +49,8 @@ def train(models, grad_vars,
     reptile = reptile_fn()
     optimizer = tf.keras.optimizers.Adam(
         inner_learning_rate, beta_1=0)
+    writer = tf.contrib.summary.create_file_writer(save_dir)
+    writer.set_as_default()
     for i in tqdm(range(meta_iters),
                   desc='Reptile on Nerf',
                   dynamic_ncols=True,
@@ -60,7 +58,8 @@ def train(models, grad_vars,
         frac_done = i / meta_iters
         cur_meta_step_size = frac_done * meta_step_size_final + \
             (1 - frac_done) * meta_step_size
-        reptile.train_nerf_step(dataset=train_set,
+        reptile.train_nerf_step(models=models,
+                                dataset=train_set,
                                 N_rand=N_rand,
                                 chunk=chunk,
                                 grad_vars=grad_vars,
@@ -73,14 +72,19 @@ def train(models, grad_vars,
                                 meta_batch_size=meta_batch_size,
                                 render_kwargs_train=render_kwargs_train)
         if i % eval_interval == 0:
+            print('#'*10 + ' EVAL ' + '#'*10)
             loss, psnr, psnr0, trans = reptile.evaluate(
-                i, test_set, N_importance, log_fn, save_dir, N_rand,
+                models,
+                i, test_set, N_importance,
+                half_res,
+                testskip,
+                white_bkgd, log_fn, save_dir, N_rand,
                 inner_iters, chunk, use_viewdirs,
                 grad_vars, optimizer, render_kwargs_train, render_kwargs_test)
-            log_fn(f'[average] ({i} | ' +
+            log_fn(f'[Average Eval Scenes] ({i} | ' +
                    f'loss: {loss:.5f} | PSNR: {psnr:.2f} |')
 
-        if i % 100 == 0 or i == meta_iters-1:
+        if i % eval_interval == 0 or i == meta_iters-1:
             for key in models:
                 path = os.path.join(
                     save_dir, '{}_{:06d}.npy'.format(key, i))

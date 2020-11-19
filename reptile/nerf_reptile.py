@@ -17,6 +17,15 @@ from run_nerf_helpers import (
 from load_blender import load_blender_data
 import os
 import imageio
+from copy import deepcopy
+tf.compat.v1.enable_eager_execution(
+    config=None, device_policy=None, execution_mode=None
+)
+
+
+def set_variables(models, variables):
+    for key, model in models.items():
+        model.set_weights(variables[key])
 
 
 class NerfReptile:
@@ -26,6 +35,7 @@ class NerfReptile:
     # pylint: disable=R0913,R0914
 
     def train_nerf_step(self,
+                        models,
                         dataset,
                         N_rand,
                         chunk,
@@ -38,11 +48,13 @@ class NerfReptile:
                         meta_step_size,
                         meta_batch_size,
                         render_kwargs_train):
-        old_vars = self._model_state.export_variables()
+        old_vars = {k: deepcopy(v.get_weights())
+                    for k, v in models.items()}
         new_vars = []
-        for (images, poses, render_poses, hwf, i_split) in _sample_scene(
+        for (scene_path, images, poses, render_poses, hwf, i_split) in _sample_scene(
                 dataset,  half_res, testskip,
                 white_bkgd, meta_batch_size):
+            # TODO Reset optimizer??
             H, W, focal = hwf
             H, W = int(H), int(W)
             hwf = [H, W, focal]
@@ -65,11 +77,17 @@ class NerfReptile:
                                      grad_vars,
                                      optimizer,
                                      render_kwargs_train)
-            new_vars.append(self._model_state.export_variables())
-            self._model_state.import_variables(old_vars)
-        new_vars = average_vars(new_vars)
-        self._model_state.import_variables(
-            interpolate_vars(old_vars, new_vars, meta_step_size))
+            new_vars.append({k: deepcopy(v.get_weights())
+                             for k, v in models.items()})
+            set_variables(models, old_vars)
+        new_vars = {k: average_vars([
+            variables[k]
+            for variables in new_vars])
+            for k in old_vars.keys()}
+        set_variables(models, {
+            k: interpolate_vars(
+                old_vars[k], new_vars[k], meta_step_size)
+            for k in new_vars.keys()})
 
     def train_innerstep(self,
                         batch_rays,
@@ -80,7 +98,6 @@ class NerfReptile:
                         optimizer,
                         render_kwargs_train):
         with tf.GradientTape() as tape:
-
             # Make predictions for color, disparity, accumulated opacity.
             rgb, disp, acc, extras = render(
                 H, W, focal,
@@ -108,9 +125,13 @@ class NerfReptile:
         return loss, psnr, psnr0, trans
 
     def evaluate(self,
+                 models,
                  metalearning_iter,
                  test_scenes,
                  N_importance,
+                 half_res,
+                 testskip,
+                 white_bkgd,
                  log_fn,
                  save_dir,
                  N_rand,
@@ -119,14 +140,19 @@ class NerfReptile:
                  grad_vars, optimizer,
                  render_kwargs_train,
                  render_kwargs_test):
-        old_vars = self._full_state.export_variables()
+        old_vars = {k: deepcopy(v.get_weights())
+                    for k, v in models.items()}
         losses = []
         psnrs = []
         psnr0s = []
         transs = []
-        for test_scene in test_scenes:
+        for test_scene_path in test_scenes:
+            # TODO Reset optimizer??
             scene_id, images, poses, render_poses, hwf, i_split = load_data(
-                test_scene)
+                test_scene_path,
+                white_bkgd=white_bkgd,
+                half_res=half_res,
+                testskip=testskip)
             H, W, focal = hwf
             H, W = int(H), int(W)
             hwf = [H, W, focal]
@@ -154,15 +180,12 @@ class NerfReptile:
             testsavedir = os.path.join(
                 save_dir, 'testset_{:06d}'.format(metalearning_iter))
             os.makedirs(testsavedir, exist_ok=True)
-            print('test poses shape', poses[i_test].shape)
             render_path(poses[i_test], hwf, chunk, render_kwargs_test,
                         gt_imgs=images[i_test], savedir=testsavedir)
-            print('Saved test set')
 
             # Save videos
             rgbs, disps = render_path(
                 render_poses, hwf, chunk, render_kwargs_test)
-            print('Done, saving', rgbs.shape, disps.shape)
             moviebase = os.path.join(
                 save_dir, '{}_spiral_{:06d}_'.format(
                     scene_id,
@@ -183,7 +206,7 @@ class NerfReptile:
 
             # Log
             log_fn(
-                f'[{scene_id}] ({metalearning_iter} | ' +
+                f'[Eval Scene #{scene_id}] ({metalearning_iter} | ' +
                 f'loss: {loss:.5f} | PSNR: {psnr:.2f} |')
 
             tf.contrib.summary.scalar('loss', loss)
@@ -227,7 +250,7 @@ class NerfReptile:
                     'disp0', extras['disp0'][tf.newaxis, ..., tf.newaxis])
                 tf.contrib.summary.image(
                     'z_std', extras['z_std'][tf.newaxis, ..., tf.newaxis])
-            self._full_state.import_variables(old_vars)
+            set_variables(models, old_vars)
         return np.mean(losses), np.mean(psnrs), np.mean(psnr0s), np.mean(transs)
 
 
@@ -264,7 +287,7 @@ def _sample_scene(dataset,
                   meta_batch_size):
     shuffled = list(dataset)
     random.shuffle(shuffled)
-    for scene_path in enumerate(shuffled[:meta_batch_size]):
+    for scene_path in shuffled[:meta_batch_size]:
         yield load_data(scene_path,
                         white_bkgd=white_bkgd,
                         half_res=half_res,

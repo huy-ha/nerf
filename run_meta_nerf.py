@@ -70,7 +70,7 @@ if __name__ == '__main__':
     if args.random_seed is not None:
         print('Fixing random seed', args.random_seed)
         np.random.seed(args.random_seed)
-        tf.set_random_seed(args.random_seed)
+        tf.compat.v1.set_random_seed(args.random_seed)
     random.seed(args.seed)
     # TODO seed everything
     train_set, test_set = read_dataset(args.metadatadir)
@@ -80,18 +80,17 @@ if __name__ == '__main__':
 
     if not args.pretrained:
         print('Training...')
-        with tf.Session() as sess:
-            train(models, grad_vars,
-                  train_set,
-                  test_set,
-                  render_kwargs_train,
-                  render_kwargs_test,
-                  ckpt_path,
-                  args.chunk, args.N_rand,
-                  args.N_importance, args.use_viewdirs,
-                  args.half_res, args.testskip, args.white_bkgd,
-                  **train_kwargs(args),
-                  inner_learning_rate=args.learning_rate)
+        train(models, grad_vars,
+              train_set,
+              test_set,
+              render_kwargs_train,
+              render_kwargs_test,
+              ckpt_path,
+              args.chunk, args.N_rand,
+              args.N_importance, args.use_viewdirs,
+              args.half_res, args.testskip, args.white_bkgd,
+              **train_kwargs(args),
+              inner_learning_rate=args.learning_rate)
     else:
         raise NotImplementedError
         print('Restoring from checkpoint...')

@@ -338,7 +338,7 @@ def render(H, W, focal,
     return ret_list + [ret_dict]
 
 
-def render_path(render_poses, hwf, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
+def render_path(render_poses, hwf, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0, log=False):
 
     H, W, focal = hwf
 
@@ -351,17 +351,19 @@ def render_path(render_poses, hwf, chunk, render_kwargs, gt_imgs=None, savedir=N
     rgbs = []
     disps = []
 
-    for i, c2w in tqdm(
-            enumerate(render_poses),
-            desc=f'Rendering {len(render_poses)} poses',
-            smoothing=0.05,
-            dynamic_ncols=True):
+    enum = enumerate(render_poses) \
+        if not log else \
+        tqdm(
+        enumerate(render_poses),
+        desc=f'Rendering {len(render_poses)} poses',
+        smoothing=0.05,
+        dynamic_ncols=True)
+
+    for i, c2w in enum:
         rgb, disp, acc, _ = render(
             H, W, focal, chunk=chunk, c2w=c2w[:3, :4], **render_kwargs)
         rgbs.append(rgb.numpy())
         disps.append(disp.numpy())
-        if i == 0:
-            print('Image Dimensions:', rgb.shape, disp.shape)
 
         if gt_imgs is not None and render_factor == 0:
             p = -10. * np.log10(np.mean(np.square(rgb - gt_imgs[i])))
