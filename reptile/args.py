@@ -40,7 +40,7 @@ def argument_parser():
     parser.add_argument('--meta-step-final', help='meta-training step size by the end',
                         default=0.1, type=float)
     parser.add_argument(
-        '--meta-batch', help='meta-training batch size', default=1, type=int)
+        '--meta-batch', help='meta-training batch size', default=4, type=int)
     parser.add_argument(
         '--meta-iters', help='meta-training iterations', default=400000, type=int)
     parser.add_argument(
@@ -50,7 +50,7 @@ def argument_parser():
     parser.add_argument(
         '--eval-samples', help='evaluation samples', default=10000, type=int)
     parser.add_argument('--eval-interval',
-                        help='train steps per eval', default=10, type=int)
+                        help='train steps per eval', default=100, type=int)
     parser.add_argument(
         '--weight-decay', help='weight decay rate', default=1, type=float)
     parser.add_argument(
@@ -86,11 +86,7 @@ def train_kwargs(parsed_args):
         'meta_step_size_final': parsed_args.meta_step_final,
         'meta_batch_size': parsed_args.meta_batch,
         'meta_iters': parsed_args.meta_iters,
-        'eval_inner_batch_size': parsed_args.eval_batch,
-        'eval_inner_iters': parsed_args.eval_iters,
         'eval_interval': parsed_args.eval_interval,
-        'weight_decay_rate': parsed_args.weight_decay,
-        'transductive': parsed_args.transductive
     }
 
 

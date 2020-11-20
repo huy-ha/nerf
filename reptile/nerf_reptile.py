@@ -139,7 +139,8 @@ class NerfReptile:
                  chunk, use_viewdirs,
                  grad_vars, optimizer,
                  render_kwargs_train,
-                 render_kwargs_test):
+                 render_kwargs_test,
+                 render_test_set=False):
         old_vars = {k: deepcopy(v.get_weights())
                     for k, v in models.items()}
         losses = []
@@ -177,6 +178,21 @@ class NerfReptile:
             psnr0s.append(psnr0)
             transs.append(trans)
 
+            # Log
+            log_fn(
+                f'[Eval Scene #{scene_id}] ({metalearning_iter} | ' +
+                f'loss: {loss:.5f} | PSNR: {psnr:.2f} |')
+
+            tf.contrib.summary.scalar('loss', loss)
+            tf.contrib.summary.scalar('psnr', psnr)
+            tf.contrib.summary.histogram('tran', trans)
+            if N_importance > 0:
+                tf.contrib.summary.scalar('psnr0', psnr0)
+
+
+            if not render_test_set:
+                continue
+
             testsavedir = os.path.join(
                 save_dir, 'testset_{:06d}'.format(metalearning_iter))
             os.makedirs(testsavedir, exist_ok=True)
@@ -203,17 +219,6 @@ class NerfReptile:
                 render_kwargs_test['c2w_staticcam'] = None
                 imageio.mimwrite(moviebase + 'rgb_still.mp4',
                                  to8b(rgbs_still), fps=30, quality=8)
-
-            # Log
-            log_fn(
-                f'[Eval Scene #{scene_id}] ({metalearning_iter} | ' +
-                f'loss: {loss:.5f} | PSNR: {psnr:.2f} |')
-
-            tf.contrib.summary.scalar('loss', loss)
-            tf.contrib.summary.scalar('psnr', psnr)
-            tf.contrib.summary.histogram('tran', trans)
-            if N_importance > 0:
-                tf.contrib.summary.scalar('psnr0', psnr0)
 
             # Log a rendered validation view to Tensorboard
             img_i = np.random.choice(i_val)
@@ -270,8 +275,6 @@ def _create_ray_batches(H, W, focal, poses, images, i_train):
 def load_data(scene_dir_path, white_bkgd, half_res, testskip):
     images, poses, render_poses, hwf, i_split = load_blender_data(
         scene_dir_path, half_res, testskip)
-    print('Loaded blender', images.shape,
-          render_poses.shape, hwf, scene_dir_path)
 
     if white_bkgd:
         images = images[..., :3]*images[..., -1:] + (1.-images[..., -1:])

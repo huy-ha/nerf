@@ -7,10 +7,10 @@ import random
 import time
 
 DEBUG = False
-NUM_SCENES = 2
+NUM_SCENES = 500
 VIEWS = 10
 RESOLUTION = 800
-RESULTS_PATH = 'data/nerf_synthetic/metacubes_2/'
+RESULTS_PATH = 'data/metacubes_nov19/'
 DEPTH_SCALE = 1.4
 COLOR_DEPTH = 8
 FORMAT = 'PNG'
@@ -20,7 +20,8 @@ CIRCLE_FIXED_END = (.7, 0, 0)
 
 random.seed(int(time.time()))
 PI = np.pi
-
+scene = bpy.data.scenes[0]
+scene.cycles.device = 'GPU'
 
 def parent_obj_to_camera(b_camera):
     origin = (0, 0, 1)
@@ -53,6 +54,8 @@ if __name__ == '__main__':
     for i_scene in range(NUM_SCENES):
         print('#'*10 + f' scene {i_scene}' + '#'*10)
         scene_output_dir = fp + f'{i_scene:06d}'
+        if os.path.exists(scene_output_dir):
+            continue
         # Data to store in JSON file
         out_data = {
             'camera_angle_x': bpy.data.objects['Camera'].data.angle_x,

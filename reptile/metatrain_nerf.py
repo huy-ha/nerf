@@ -26,17 +26,13 @@ def train(models, grad_vars,
           half_res,
           testskip,
           white_bkgd,
-          ###########################
-          # TODO change these numbers
-          num_scenes=3,
           inner_iters=10,
-          ###########################
           meta_step_size=0.1,
           meta_step_size_final=0.1,
           meta_batch_size=1,
           meta_iters=400000,
           inner_learning_rate=1e-3,
-          eval_interval=100,
+          eval_interval=10,
           time_deadline=None,
           reptile_fn=NerfReptile,
           log_fn=print):
@@ -71,7 +67,7 @@ def train(models, grad_vars,
                                 meta_step_size=cur_meta_step_size,
                                 meta_batch_size=meta_batch_size,
                                 render_kwargs_train=render_kwargs_train)
-        if i % eval_interval == 0:
+        if i % eval_interval == 0 and i > 0:
             print('#'*10 + ' EVAL ' + '#'*10)
             loss, psnr, psnr0, trans = reptile.evaluate(
                 models,
@@ -80,11 +76,12 @@ def train(models, grad_vars,
                 testskip,
                 white_bkgd, log_fn, save_dir, N_rand,
                 inner_iters, chunk, use_viewdirs,
-                grad_vars, optimizer, render_kwargs_train, render_kwargs_test)
+                grad_vars, optimizer, render_kwargs_train, render_kwargs_test,
+                render_test_set= i % 100 == 0)
             log_fn(f'[Average Eval Scenes] ({i} | ' +
                    f'loss: {loss:.5f} | PSNR: {psnr:.2f} |')
 
-        if i % eval_interval == 0 or i == meta_iters-1:
+        if i % 10 == 0 or i == meta_iters-1:
             for key in models:
                 path = os.path.join(
                     save_dir, '{}_{:06d}.npy'.format(key, i))

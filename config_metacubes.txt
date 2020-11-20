@@ -1,6 +1,6 @@
-expname = metacubes
+expname = metacubes_nov19_v1
 basedir = ./logs
-datadir = ./data/nerf_synthetic/metacubes
+datadir = ./metacubes
 dataset_type = blender
 
 half_res = True
