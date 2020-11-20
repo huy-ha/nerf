@@ -148,6 +148,7 @@ class NerfReptile:
         psnr0s = []
         transs = []
         for test_scene_path in test_scenes:
+            set_variables(models, old_vars)
             # TODO Reset optimizer??
             scene_id, images, poses, render_poses, hwf, i_split = load_data(
                 test_scene_path,
@@ -190,9 +191,6 @@ class NerfReptile:
                 tf.contrib.summary.scalar('psnr0', psnr0)
 
 
-            if not render_test_set:
-                continue
-
             testsavedir = os.path.join(
                 save_dir, 'testset_{:06d}'.format(metalearning_iter))
             os.makedirs(testsavedir, exist_ok=True)
@@ -200,25 +198,26 @@ class NerfReptile:
                         gt_imgs=images[i_test], savedir=testsavedir)
 
             # Save videos
-            rgbs, disps = render_path(
-                render_poses, hwf, chunk, render_kwargs_test)
-            moviebase = os.path.join(
-                save_dir, '{}_spiral_{:06d}_'.format(
-                    scene_id,
-                    metalearning_iter))
-            imageio.mimwrite(moviebase + 'rgb.mp4',
-                             to8b(rgbs), fps=30, quality=8)
-            imageio.mimwrite(moviebase + 'disp.mp4',
-                             to8b(disps / np.max(disps)), fps=30, quality=8)
+            if render_test_set:
+                rgbs, disps = render_path(
+                    render_poses, hwf, chunk, render_kwargs_test)
+                moviebase = os.path.join(
+                    save_dir, '{}_spiral_{:06d}_'.format(
+                        scene_id,
+                        metalearning_iter))
+                imageio.mimwrite(moviebase + 'rgb.mp4',
+                                 to8b(rgbs), fps=30, quality=8)
+                imageio.mimwrite(moviebase + 'disp.mp4',
+                                 to8b(disps / np.max(disps)), fps=30, quality=8)
 
-            if use_viewdirs:
-                render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
-                rgbs_still, _ = render_path(
-                    render_poses, hwf, chunk,
-                    render_kwargs_test)
-                render_kwargs_test['c2w_staticcam'] = None
-                imageio.mimwrite(moviebase + 'rgb_still.mp4',
-                                 to8b(rgbs_still), fps=30, quality=8)
+                if use_viewdirs:
+                    render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
+                    rgbs_still, _ = render_path(
+                        render_poses, hwf, chunk,
+                        render_kwargs_test)
+                    render_kwargs_test['c2w_staticcam'] = None
+                    imageio.mimwrite(moviebase + 'rgb_still.mp4',
+                                     to8b(rgbs_still), fps=30, quality=8)
 
             # Log a rendered validation view to Tensorboard
             img_i = np.random.choice(i_val)
@@ -255,7 +254,7 @@ class NerfReptile:
                     'disp0', extras['disp0'][tf.newaxis, ..., tf.newaxis])
                 tf.contrib.summary.image(
                     'z_std', extras['z_std'][tf.newaxis, ..., tf.newaxis])
-            set_variables(models, old_vars)
+        set_variables(models, old_vars)
         return np.mean(losses), np.mean(psnrs), np.mean(psnr0s), np.mean(transs)
 
 

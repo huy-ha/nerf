@@ -28,17 +28,17 @@ def parse_args():
     parser.add_argument(
         '--inner-batch', help='inner batch size', default=5, type=int)
     parser.add_argument(
-        '--inner-iters', help='inner iterations', default=10, type=int)
+        '--inner-iters', help='inner iterations', default=50, type=int)
     parser.add_argument(
         '--replacement', help='sample with replacement', action='store_true')
     parser.add_argument('--learning-rate',
                         help='Adam step size', default=1e-3, type=float)
     parser.add_argument(
-        '--meta-step', help='meta-training step size', default=0.1, type=float)
+        '--meta-step', help='meta-training step size', default=0.05, type=float)
     parser.add_argument('--meta-step-final', help='meta-training step size by the end',
                         default=0.1, type=float)
     parser.add_argument(
-        '--meta-batch', help='meta-training batch size', default=4, type=int)
+        '--meta-batch', help='meta-training batch size', default=8, type=int)
     parser.add_argument(
         '--meta-iters', help='meta-training iterations', default=400000, type=int)
     parser.add_argument('--eval-interval',

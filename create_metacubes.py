@@ -21,7 +21,10 @@ CIRCLE_FIXED_END = (.7, 0, 0)
 random.seed(int(time.time()))
 PI = np.pi
 scene = bpy.data.scenes[0]
-scene.cycles.device = 'GPU'
+for scene in bpy.data.scenes:
+    scene.render.threads_mode = 'FIXED'
+    scene.render.threads = 6
+    scene.render.image_settings.compression = 95
 
 def parent_obj_to_camera(b_camera):
     origin = (0, 0, 1)
