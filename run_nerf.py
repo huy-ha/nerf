@@ -367,7 +367,8 @@ def render_path(render_poses, hwf, chunk, render_kwargs, gt_imgs=None, savedir=N
 
         if gt_imgs is not None and render_factor == 0:
             p = -10. * np.log10(np.mean(np.square(rgb - gt_imgs[i])))
-            print(p)
+            if log:
+                print('PSNR: {p:.03f}')
 
         if savedir is not None:
             rgb8 = to8b(rgbs[-1])

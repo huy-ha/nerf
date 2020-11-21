@@ -18,9 +18,7 @@ from load_blender import load_blender_data
 import os
 import imageio
 from copy import deepcopy
-tf.compat.v1.enable_eager_execution(
-    config=None, device_policy=None, execution_mode=None
-)
+tf.compat.v1.enable_eager_execution()
 
 
 def set_variables(models, variables):
@@ -34,23 +32,27 @@ class NerfReptile:
 
     # pylint: disable=R0913,R0914
 
-    def train_nerf_step(self,
-                        models,
-                        dataset,
-                        N_rand,
-                        chunk,
-                        grad_vars,
-                        optimizer,
-                        half_res,
-                        testskip,
-                        white_bkgd,
-                        inner_iters,
-                        meta_step_size,
-                        meta_batch_size,
-                        render_kwargs_train):
+    def meta_step(self,
+                  models,
+                  dataset,
+                  N_rand,
+                  chunk,
+                  grad_vars,
+                  optimizer,
+                  half_res,
+                  testskip,
+                  white_bkgd,
+                  inner_iters,
+                  meta_step_size,
+                  meta_batch_size,
+                  render_kwargs_train):
         old_vars = {k: deepcopy(v.get_weights())
                     for k, v in models.items()}
         new_vars = []
+        losses = []
+        psnrs = []
+        psnr0s = []
+        transs = []
         for (scene_path, images, poses, render_poses, hwf, i_split) in _sample_scene(
                 dataset,  half_res, testskip,
                 white_bkgd, meta_batch_size):
@@ -70,13 +72,18 @@ class NerfReptile:
                     np.random.shuffle(rays_rgb)
                     i_batch = 0
                 i_batch += N_rand
-                self.train_innerstep(batch_rays,
-                                     target_s,
-                                     chunk,
-                                     H, W, focal,
-                                     grad_vars,
-                                     optimizer,
-                                     render_kwargs_train)
+                loss, psnr, psnr0, trans = \
+                    self.train_innerstep(batch_rays,
+                                         target_s,
+                                         chunk,
+                                         H, W, focal,
+                                         grad_vars,
+                                         optimizer,
+                                         render_kwargs_train)
+                losses.append(loss)
+                psnrs.append(psnr)
+                psnr0s.append(psnr0)
+                transs.append(trans)
             new_vars.append({k: deepcopy(v.get_weights())
                              for k, v in models.items()})
             set_variables(models, old_vars)
@@ -88,6 +95,7 @@ class NerfReptile:
             k: interpolate_vars(
                 old_vars[k], new_vars[k], meta_step_size)
             for k in new_vars.keys()})
+        return np.mean(losses), np.mean(psnrs), np.mean(psnr0s), np.mean(transs)
 
     def train_innerstep(self,
                         batch_rays,
@@ -124,23 +132,24 @@ class NerfReptile:
         optimizer.apply_gradients(zip(gradients, grad_vars))
         return loss, psnr, psnr0, trans
 
-    def evaluate(self,
-                 models,
-                 metalearning_iter,
-                 test_scenes,
-                 N_importance,
-                 half_res,
-                 testskip,
-                 white_bkgd,
-                 log_fn,
-                 save_dir,
-                 N_rand,
-                 inner_iters,
-                 chunk, use_viewdirs,
-                 grad_vars, optimizer,
-                 render_kwargs_train,
-                 render_kwargs_test,
-                 render_test_set=False):
+    def meta_evaluate(self,
+                      models,
+                      metalearning_iter,
+                      test_scenes,
+                      N_importance,
+                      half_res,
+                      testskip,
+                      white_bkgd,
+                      log_fn,
+                      save_dir,
+                      N_rand,
+                      inner_iters,
+                      chunk, use_viewdirs,
+                      grad_vars, optimizer,
+                      render_kwargs_train,
+                      render_kwargs_test,
+                      render_test_set=False,
+                      writer=None):
         old_vars = {k: deepcopy(v.get_weights())
                     for k, v in models.items()}
         losses = []
@@ -159,10 +168,14 @@ class NerfReptile:
             H, W = int(H), int(W)
             hwf = [H, W, focal]
             i_train, i_val, i_test = i_split
-            # Train
+            # Train on meta test scene
             i_batch = 0
             rays_rgb = _create_ray_batches(
                 H, W, focal, poses, images, i_train)
+            scene_losses = []
+            scene_psnrs = []
+            scene_psnr0s = []
+            scene_transs = []
             for batch in range(inner_iters):
                 batch = rays_rgb[i_batch:i_batch+N_rand]  # [B, 2+1, 3*?]
                 batch = tf.transpose(batch, [1, 0, 2])
@@ -174,28 +187,86 @@ class NerfReptile:
                 loss, psnr, psnr0, trans = self.train_innerstep(
                     batch_rays, target_s, chunk, H, W, focal,
                     grad_vars, optimizer, render_kwargs_train)
-            losses.append(loss)
-            psnrs.append(psnr)
-            psnr0s.append(psnr0)
-            transs.append(trans)
+                scene_losses.append(loss)
+                scene_psnrs.append(psnr)
+                scene_psnr0s.append(psnr0)
+                scene_transs.append(trans)
+            scene_losses = np.mean(scene_losses)
+            scene_psnrs = np.mean(scene_psnrs)
+            scene_psnr0s = np.mean(scene_psnr0s)
+            scene_transs = np.mean(scene_transs)
+            losses.append(scene_losses)
+            psnrs.append(scene_psnrs)
+            psnr0s.append(scene_psnr0s)
+            transs.append(scene_transs)
 
             # Log
-            log_fn(
-                f'[Eval Scene #{scene_id}] ({metalearning_iter} | ' +
-                f'loss: {loss:.5f} | PSNR: {psnr:.2f} |')
-
-            tf.contrib.summary.scalar('loss', loss)
-            tf.contrib.summary.scalar('psnr', psnr)
-            tf.contrib.summary.histogram('tran', trans)
-            if N_importance > 0:
-                tf.contrib.summary.scalar('psnr0', psnr0)
-
+            log_fn(f'[Eval Scene #{scene_id}] ({metalearning_iter} | ' +
+                   f'loss: {scene_losses:.5f} | PSNR: {scene_psnrs:.2f} )')
 
             testsavedir = os.path.join(
-                save_dir, 'testset_{:06d}'.format(metalearning_iter))
+                save_dir, 'testset_iter{:06d}_scene{}'.format(
+                    metalearning_iter, scene_id))
             os.makedirs(testsavedir, exist_ok=True)
             render_path(poses[i_test], hwf, chunk, render_kwargs_test,
                         gt_imgs=images[i_test], savedir=testsavedir)
+
+            # Log a rendered validation view to Tensorboard
+            img_i = np.random.choice(i_val)
+            target = images[img_i]
+            pose = poses[img_i, :3, :4]
+
+            rgb, disp, acc, extras = render(
+                H, W, focal, chunk=chunk, c2w=pose, **render_kwargs_test)
+
+            psnr = mse2psnr(img2mse(rgb, target))
+
+            # Save out the validation image for Tensorboard-free monitoring
+            testimgdir = os.path.join(
+                save_dir, 'tboard_val_imgs')
+            if not os.path.exists(testimgdir):
+                os.makedirs(testimgdir, exist_ok=True)
+            imageio.imwrite(os.path.join(
+                testimgdir, '{:06d}.png'.format(metalearning_iter)), to8b(rgb))
+
+            writer.add_image(
+                f'rgb/{scene_id}',
+                np.squeeze(to8b(rgb)[tf.newaxis], axis=0),
+                metalearning_iter,
+                dataformats='HWC')
+            writer.add_image(
+                f'disp/{scene_id}',
+                np.squeeze(disp[tf.newaxis, ..., tf.newaxis], axis=0),
+                metalearning_iter,
+                dataformats='HWC')
+            writer.add_image(
+                f'acc/{scene_id}',
+                np.squeeze(acc[tf.newaxis, ..., tf.newaxis], axis=0),
+                metalearning_iter,
+                dataformats='HWC')
+            writer.add_image(
+                f'rgb_holdout/{scene_id}',
+                np.squeeze(target[tf.newaxis], axis=0),
+                metalearning_iter,
+                dataformats='HWC')
+            if N_importance > 0:
+                writer.add_image(
+                    f'rgb0/{scene_id}',
+                    np.squeeze(to8b(extras['rgb0'])[tf.newaxis], axis=0),
+                    metalearning_iter,
+                    dataformats='HWC')
+                writer.add_image(
+                    f'disp0/{scene_id}',
+                    np.squeeze(extras['disp0']
+                               [tf.newaxis, ..., tf.newaxis], axis=0),
+                    metalearning_iter,
+                    dataformats='HWC')
+                writer.add_image(
+                    f'z_std/{scene_id}',
+                    np.squeeze(extras['z_std']
+                               [tf.newaxis, ..., tf.newaxis], axis=0),
+                    metalearning_iter,
+                    dataformats='HWC')
 
             # Save videos
             if render_test_set:
@@ -219,41 +290,6 @@ class NerfReptile:
                     imageio.mimwrite(moviebase + 'rgb_still.mp4',
                                      to8b(rgbs_still), fps=30, quality=8)
 
-            # Log a rendered validation view to Tensorboard
-            img_i = np.random.choice(i_val)
-            target = images[img_i]
-            pose = poses[img_i, :3, :4]
-
-            rgb, disp, acc, extras = render(
-                H, W, focal, chunk=chunk, c2w=pose, **render_kwargs_test)
-
-            psnr = mse2psnr(img2mse(rgb, target))
-
-            # Save out the validation image for Tensorboard-free monitoring
-            testimgdir = os.path.join(
-                save_dir, 'tboard_val_imgs')
-            if not os.path.exists(testimgdir):
-                os.makedirs(testimgdir, exist_ok=True)
-            imageio.imwrite(os.path.join(
-                testimgdir, '{:06d}.png'.format(metalearning_iter)), to8b(rgb))
-
-            tf.contrib.summary.image('rgb', to8b(rgb)[tf.newaxis])
-            tf.contrib.summary.image(
-                'disp', disp[tf.newaxis, ..., tf.newaxis])
-            tf.contrib.summary.image(
-                'acc', acc[tf.newaxis, ..., tf.newaxis])
-
-            tf.contrib.summary.scalar('psnr_holdout', psnr)
-            tf.contrib.summary.image(
-                'rgb_holdout', target[tf.newaxis])
-
-            if N_importance > 0:
-                tf.contrib.summary.image(
-                    'rgb0', to8b(extras['rgb0'])[tf.newaxis])
-                tf.contrib.summary.image(
-                    'disp0', extras['disp0'][tf.newaxis, ..., tf.newaxis])
-                tf.contrib.summary.image(
-                    'z_std', extras['z_std'][tf.newaxis, ..., tf.newaxis])
         set_variables(models, old_vars)
         return np.mean(losses), np.mean(psnrs), np.mean(psnr0s), np.mean(transs)
 
