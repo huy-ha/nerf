@@ -38,7 +38,10 @@ def run_network(inputs, viewdirs, timestep_embed, fn, embed_fn, embeddirs_fn, ne
         input_dirs_flat = tf.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
         print(embedded.shape)
-        embedded = tf.concat([embedded, embedded_dirs, tf.broadcast_to(timestep_embed, (embedded_dirs.shape[0], timestep_embed.shape[-1]))], -1) # TODO inputs
+        # embedded = tf.concat([embedded, embedded_dirs, tf.broadcast_to(timestep_embed, (embedded_dirs.shape[0], timestep_embed.shape[-1]))], -1) # hot encode
+        timestep_broadcast = tf.constant([timestep_embed], dtype=tf.float32)
+        timestep_broadcast = tf.broadcast_to(timestep_broadcast, shape=(embedded.shape[0],1))
+        embedded = tf.concat([embedded, embedded_dirs, timestep_broadcast], -1) # TODO inputs
 
     outputs_flat = batchify(fn, netchunk)(embedded) # TODO call model
     outputs = tf.reshape(outputs_flat, list(
@@ -378,7 +381,7 @@ def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs
     return rgbs, disps
 
 
-def create_nerf(args, len_timesteps):
+def create_nerf(args):
     """Instantiate NeRF's MLP model."""
 
     embed_fn, input_ch = get_embedder(args.multires, args.i_embed) #10, 0
@@ -394,7 +397,7 @@ def create_nerf(args, len_timesteps):
     model = init_nerf_model( #TODO
         D=args.netdepth, W=args.netwidth,
         input_ch=input_ch, output_ch=output_ch, skips=skips,
-        input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=len_timesteps)
+        input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=1)
     grad_vars = model.trainable_variables
     models = {'model': model}
 
@@ -403,7 +406,7 @@ def create_nerf(args, len_timesteps):
         model_fine = init_nerf_model( #todo
             D=args.netdepth_fine, W=args.netwidth_fine,
             input_ch=input_ch, output_ch=output_ch, skips=skips,
-            input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=len_timesteps)
+            input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=1)
         grad_vars += model_fine.trainable_variables
         models['model_fine'] = model_fine
 
@@ -673,7 +676,7 @@ def train():
 
     # Create nerf model
     render_kwargs_train, render_kwargs_test, start, grad_vars, models = create_nerf( #todo
-        args, len(timesteps))
+        args)
 
     bds_dict = {
         'near': tf.cast(near, tf.float32),
@@ -784,8 +787,8 @@ def train():
                 img_i = np.random.choice(i_train)
                 target = images[img_i]
                 pose = poses[img_i, :3, :4]
-                timestep = timesteps[img_i]
-                timestep_embed = tf.one_hot(timestep, len(timesteps))
+                timestep_embed = timesteps[img_i]
+                # timestep_embed = tf.one_hot(timestep, len(timesteps))
                 if N_rand is not None:
                     rays_o, rays_d = get_rays(H, W, focal, pose)
                     if i < args.precrop_iters:
