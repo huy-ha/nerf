@@ -37,7 +37,6 @@ def run_network(inputs, viewdirs, timestep_embed, fn, embed_fn, embeddirs_fn, ne
         input_dirs = tf.broadcast_to(viewdirs[:, None], inputs.shape)
         input_dirs_flat = tf.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
-        print(embedded.shape)
         # embedded = tf.concat([embedded, embedded_dirs, tf.broadcast_to(timestep_embed, (embedded_dirs.shape[0], timestep_embed.shape[-1]))], -1) # hot encode
         timestep_broadcast = tf.constant([timestep_embed], dtype=tf.float32)
         timestep_broadcast = tf.broadcast_to(timestep_broadcast, shape=(embedded.shape[0],1))
@@ -722,7 +721,7 @@ def train():
     # Prepare raybatch tensor if batching random rays
     N_rand = args.N_rand
     use_batching = not args.no_batching
-    if use_batching: # doesn't enter
+    if use_batching:
         # For random ray batching.
         #
         # Constructs an array 'rays_rgb' of shape [N*H*W, 3, 3] where axis=1 is
@@ -857,7 +856,7 @@ def train():
             if i % args.i_video == 0 and i > 0:
 
                 rgbs, disps = render_path(
-                    render_poses, hwf, timestep, args.chunk, render_kwargs_test) # TODO
+                    render_poses, hwf, timestep_embed, args.chunk, render_kwargs_test) # TODO
                 print('Done, saving', rgbs.shape, disps.shape)
                 moviebase = os.path.join(
                     basedir, expname, '{}_spiral_{:06d}_'.format(expname, i))
@@ -869,7 +868,7 @@ def train():
                 if args.use_viewdirs:
                     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
                     rgbs_still, _ = render_path(
-                        render_poses, hwf, timesteps, args.chunk, render_kwargs_test) # TODO
+                        render_poses, hwf, timestep_embed, args.chunk, render_kwargs_test) # TODO
                     render_kwargs_test['c2w_staticcam'] = None
                     imageio.mimwrite(moviebase + 'rgb_still.mp4',
                                      to8b(rgbs_still), fps=30, quality=8)
@@ -879,7 +878,7 @@ def train():
                     basedir, expname, 'testset_{:06d}'.format(i))
                 os.makedirs(testsavedir, exist_ok=True)
                 print('test poses shape', poses[i_test].shape)
-                render_path(poses[i_test], hwf, timesteps, args.chunk, render_kwargs_test,
+                render_path(poses[i_test], hwf, timestep_embed, args.chunk, render_kwargs_test,
                             gt_imgs=images[i_test], savedir=testsavedir) # TODO
                 print('Saved test set')
 
