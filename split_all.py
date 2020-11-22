@@ -2,8 +2,15 @@ from pathlib import Path
 from os.path import abspath, basename, splitext, exists
 import json
 import numpy as np
-from os import mkdir, symlink
+from os import mkdir, symlink, rmdir
 from random import shuffle
+import shutil
+
+def mkdir_new(path):
+    if exists(path):
+        shutil.rmtree(path)
+    mkdir(path)
+
 if __name__ == '__main__':
     for dir_path in list(str(path) for path in Path('./.').glob("*")):
         print(str(dir_path))
@@ -15,8 +22,9 @@ if __name__ == '__main__':
         n = len(transforms['frames'])
         print(f'found {n} images')
         shuffle(transforms['frames'])
-        train_frames, val_frames, test_frames = np.split(
-            transforms['frames'], [int(.8 * n), int(.9 * n)])
+        train_frames, val_frames = np.split(
+            transforms['frames'], [int(.8 * n)])
+        test_frames = val_frames
         val_transforms = {
             'camera_angle_x': transforms['camera_angle_x'],
             'frames': list(val_frames)
@@ -32,20 +40,17 @@ if __name__ == '__main__':
             'frames': list(train_frames)
         }
 
-        if exists(f'{dir_path}/test'):
-            print('already exists')
-            continue
-        mkdir(f'{dir_path}/test')
+        mkdir_new(f'{dir_path}/test')
         for frame in test_transforms['frames']:
             output = f'{dir_path}/test/' + basename(frame['file_path']) + '.png'
             symlink(frame['file_path']+'.png', output)
 
-        mkdir(f'{dir_path}/train')
+        mkdir_new(f'{dir_path}/train')
         for frame in train_transforms['frames']:
             output = f'{dir_path}/train/' + basename(frame['file_path']) + '.png'
             symlink(frame['file_path']+'.png', output)
 
-        mkdir(f'{dir_path}/val')
+        mkdir_new(f'{dir_path}/val')
         for frame in val_transforms['frames']:
             output = f'{dir_path}/val/' + basename(frame['file_path']) + '.png'
             symlink(frame['file_path']+'.png', output)
