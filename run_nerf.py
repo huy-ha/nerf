@@ -38,8 +38,10 @@ def run_network(inputs, viewdirs, timestep_embed, fn, embed_fn, embeddirs_fn, ne
         input_dirs_flat = tf.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
         # embedded = tf.concat([embedded, embedded_dirs, tf.broadcast_to(timestep_embed, (embedded_dirs.shape[0], timestep_embed.shape[-1]))], -1) # hot encode
-        timestep_broadcast = tf.constant([timestep_embed], dtype=tf.float32)
-        timestep_broadcast = tf.broadcast_to(timestep_broadcast, shape=(embedded.shape[0],1))
+        timestep_broadcast = tf.constant(timestep_embed, dtype=tf.float32)
+        timestep_broadcast = tf.broadcast_to(timestep_broadcast[:, None], [inputs.shape[0], inputs.shape[1]])
+        timestep_broadcast = tf.reshape(timestep_broadcast, [-1, 1])
+        # timestep_broadcast = tf.broadcast_to(timestep_broadcast, shape=(embedded.shape[0],1))
         embedded = tf.concat([embedded, embedded_dirs, timestep_broadcast], -1) # TODO inputs
 
     outputs_flat = batchify(fn, netchunk)(embedded) # TODO call model
@@ -168,7 +170,7 @@ def render_rays(ray_batch,
 
     ###############################
     # batch size
-    N_rays = ray_batch.shape[0]
+    N_rays = ray_batch.shape[0] # 1024
 
     # Extract ray origin, direction.
     rays_o, rays_d = ray_batch[:, 0:3], ray_batch[:, 3:6]  # [N_rays, 3] each
@@ -495,7 +497,7 @@ def config_parser():
                         help='number of rays processed in parallel, decrease if running out of memory')
     parser.add_argument("--netchunk", type=int, default=1024*64,
                         help='number of pts sent through network in parallel, decrease if running out of memory')
-    parser.add_argument("--no_batching", action='store_true',
+    parser.add_argument("--no_batching", action='store_false',
                         help='only take random rays from 1 image at a time')
     parser.add_argument("--no_reload", action='store_true',
                         help='do not reload weights from saved ckpt')
@@ -698,8 +700,11 @@ def train():
             'test' if args.render_test else 'path', start))
         os.makedirs(testsavedir, exist_ok=True)
         print('test poses shape', render_poses.shape)
-
-        rgbs, _ = render_path(render_poses, hwf, timesteps, args.chunk, render_kwargs_test,
+        test_timesteps = []
+        for i in i_test:
+            test_timesteps.extend([timesteps[i]] * H * W)
+        test_timesteps = np.asarray(test_timesteps)
+        rgbs, _ = render_path(render_poses, hwf, test_timesteps, args.chunk, render_kwargs_test,
                               gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor) # TODO
         print('Done rendering', testsavedir)
         imageio.mimwrite(os.path.join(testsavedir, 'video.mp4'),
@@ -742,11 +747,30 @@ def train():
         rays_rgb = np.transpose(rays_rgb, [0, 2, 3, 1, 4])
         rays_rgb = np.stack([rays_rgb[i]
                              for i in i_train], axis=0)  # train images only
+        train_timesteps = []
+        for i in i_train:
+            train_timesteps.extend([timesteps[i]] * H * W)
+        train_timesteps = np.asarray(train_timesteps)
         # [(N-1)*H*W, ro+rd+rgb, 3]
         rays_rgb = np.reshape(rays_rgb, [-1, 3, 3])
         rays_rgb = rays_rgb.astype(np.float32)
         print('shuffle rays')
-        np.random.shuffle(rays_rgb)
+        # c = list(zip(rays_rgb,train_timesteps))
+        idxs = np.random.permutation(rays_rgb.shape[0])
+        # random.shuffle(c)
+        # rays_rgb, train_timesteps = zip(*c)
+        # rays_rgb = np.array(rays_rgb)
+        # train_timesteps =np.array(train_timesteps)
+        # np.random.shuffle(rays_rgb)
+        # shuffled_rays_rgb, shuffled_train_timesteps = [], []
+        # for old_index, new_index in enumerate(idxs):
+        #     shuffled_rays_rgb[new_index] = rays_rgb[old_index]
+        #     shuffled_train_timesteps[new_index] = train_timesteps[old_index]
+        #
+        # rays_rgb = shuffled_rays_rgb
+        # train_timesteps = shuffled_train_timesteps
+        rays_rgb = rays_rgb[idxs]
+        train_timesteps = train_timesteps[idxs]
         print('done')
         i_batch = 0
 
@@ -766,10 +790,10 @@ def train():
             time0 = time.time()
 
             # Sample random ray batch
-
             if use_batching:
                 # Random over all images
                 batch = rays_rgb[i_batch:i_batch+N_rand]  # [B, 2+1, 3*?]
+                batch_timestep = train_timesteps[i_batch: i_batch + N_rand]
                 batch = tf.transpose(batch, [1, 0, 2])
 
                 # batch_rays[i, n, xyz] = ray origin or direction, example_id, 3D position
@@ -778,7 +802,10 @@ def train():
 
                 i_batch += N_rand
                 if i_batch >= rays_rgb.shape[0]:
-                    np.random.shuffle(rays_rgb)
+                    idxs = np.random.permutation(rays_rgb.shape[0])
+                    rays_rgb = rays_rgb[idxs]
+                    train_timesteps = train_timesteps[idxs]
+                    # np.random.shuffle(rays_rgb)
                     i_batch = 0
 
             else:
@@ -786,8 +813,8 @@ def train():
                 img_i = np.random.choice(i_train)
                 target = images[img_i]
                 pose = poses[img_i, :3, :4]
-                timestep_embed = timesteps[img_i]
-                # timestep_embed = tf.one_hot(timestep, len(timesteps))
+                timestep = timesteps[img_i]
+                # timestep = tf.one_hot(timestep, len(timesteps))
                 if N_rand is not None:
                     rays_o, rays_d = get_rays(H, W, focal, pose)
                     if i < args.precrop_iters:
@@ -818,9 +845,14 @@ def train():
             with tf.GradientTape() as tape:
 
                 # Make predictions for color, disparity, accumulated opacity.
-                rgb, disp, acc, extras = render( # TODO
-                    H, W, focal, timestep_embed, chunk=args.chunk, rays=batch_rays,
-                    verbose=i < 10, retraw=True, **render_kwargs_train)
+                if use_batching:
+                    rgb, disp, acc, extras = render(  # TODO
+                        H, W, focal, batch_timestep, chunk=args.chunk, rays=batch_rays,
+                        verbose=i < 10, retraw=True, **render_kwargs_train)
+                else:
+                    rgb, disp, acc, extras = render( # TODO
+                        H, W, focal, timestep, chunk=args.chunk, rays=batch_rays,
+                        verbose=i < 10, retraw=True, **render_kwargs_train)
 
                 # Compute MSE loss between predicted and true RGB.
                 img_loss = img2mse(rgb, target_s)
@@ -854,9 +886,12 @@ def train():
                     save_weights(models[k], k, i)
 
             if i % args.i_video == 0 and i > 0:
-
-                rgbs, disps = render_path(
-                    render_poses, hwf, timestep_embed, args.chunk, render_kwargs_test) # TODO
+                if use_batching:
+                    rgbs, disps = render_path(
+                        render_poses, hwf, batch_timestep, args.chunk, render_kwargs_test)  # TODO
+                else:
+                    rgbs, disps = render_path(
+                        render_poses, hwf, timestep, args.chunk, render_kwargs_test) # TODO
                 print('Done, saving', rgbs.shape, disps.shape)
                 moviebase = os.path.join(
                     basedir, expname, '{}_spiral_{:06d}_'.format(expname, i))
@@ -867,8 +902,12 @@ def train():
 
                 if args.use_viewdirs:
                     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
-                    rgbs_still, _ = render_path(
-                        render_poses, hwf, timestep_embed, args.chunk, render_kwargs_test) # TODO
+                    if use_batching:
+                        rgbs_still, _ = render_path(
+                            render_poses, hwf, batch_timestep, args.chunk, render_kwargs_test)  # TODO
+                    else:
+                        rgbs_still, _ = render_path(
+                            render_poses, hwf, timestep, args.chunk, render_kwargs_test) # TODO
                     render_kwargs_test['c2w_staticcam'] = None
                     imageio.mimwrite(moviebase + 'rgb_still.mp4',
                                      to8b(rgbs_still), fps=30, quality=8)
@@ -878,8 +917,12 @@ def train():
                     basedir, expname, 'testset_{:06d}'.format(i))
                 os.makedirs(testsavedir, exist_ok=True)
                 print('test poses shape', poses[i_test].shape)
-                render_path(poses[i_test], hwf, timestep_embed, args.chunk, render_kwargs_test,
-                            gt_imgs=images[i_test], savedir=testsavedir) # TODO
+                if use_batching:
+                    render_path(poses[i_test], hwf, batch_timestep, args.chunk, render_kwargs_test,
+                                gt_imgs=images[i_test], savedir=testsavedir)  # TODO
+                else:
+                    render_path(poses[i_test], hwf, timestep, args.chunk, render_kwargs_test,
+                                gt_imgs=images[i_test], savedir=testsavedir) # TODO
                 print('Saved test set')
 
             if i % args.i_print == 0 or i < 10:
@@ -901,7 +944,7 @@ def train():
                     pose = poses[img_i, :3, :4]
                     timestep = timesteps[img_i]
 
-                    rgb, disp, acc, extras = render(H, W, focal, timestep_embed, chunk=args.chunk, c2w=pose,
+                    rgb, disp, acc, extras = render(H, W, focal, timestep, chunk=args.chunk, c2w=pose,
                                                     **render_kwargs_test)
 
                     psnr = mse2psnr(img2mse(rgb, target))
