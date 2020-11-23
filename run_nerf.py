@@ -253,7 +253,7 @@ def batchify_rays(rays_flat, timestep_embed, chunk=1024*32, **kwargs):
     """Render rays in smaller minibatches to avoid OOM."""
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
-        ret = render_rays(rays_flat[i:i+chunk], timestep_embed, **kwargs)
+        ret = render_rays(rays_flat[i:i+chunk], timestep_embed[i:i+chunk], **kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -942,7 +942,7 @@ def train():
                     img_i = np.random.choice(i_val)
                     target = images[img_i]
                     pose = poses[img_i, :3, :4]
-                    timestep = timesteps[img_i]
+                    timestep = [timesteps[img_i]] * (H*W)
 
                     rgb, disp, acc, extras = render(H, W, focal, timestep, chunk=args.chunk, c2w=pose,
                                                     **render_kwargs_test)
