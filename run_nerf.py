@@ -497,7 +497,7 @@ def config_parser():
                         help='number of rays processed in parallel, decrease if running out of memory')
     parser.add_argument("--netchunk", type=int, default=1024*64,
                         help='number of pts sent through network in parallel, decrease if running out of memory')
-    parser.add_argument("--no_batching", action='store_false',
+    parser.add_argument("--no_batching", action='store_true',
                         help='only take random rays from 1 image at a time')
     parser.add_argument("--no_reload", action='store_true',
                         help='do not reload weights from saved ckpt')
