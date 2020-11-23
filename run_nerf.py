@@ -813,7 +813,7 @@ def train():
                 img_i = np.random.choice(i_train)
                 target = images[img_i]
                 pose = poses[img_i, :3, :4]
-                timestep = timesteps[img_i]
+                timestep = [timesteps[img_i]] * (H*W)
                 # timestep = tf.one_hot(timestep, len(timesteps))
                 if N_rand is not None:
                     rays_o, rays_d = get_rays(H, W, focal, pose)
