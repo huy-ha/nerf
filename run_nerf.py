@@ -23,7 +23,7 @@ def batchify(fn, chunk):
         return fn
 
     def ret(inputs):
-        return tf.concat([fn(inputs[i:i+chunk]) for i in range(0, inputs.shape[0], chunk)], 0) # TODO
+        return tf.concat([fn(inputs[i:i+chunk]) for i in range(0, inputs.shape[0], chunk)], 0) 
     return ret
 
 
@@ -42,9 +42,9 @@ def run_network(inputs, viewdirs, timestep_embed, fn, embed_fn, embeddirs_fn, ne
         timestep_broadcast = tf.broadcast_to(timestep_broadcast[:, None], [inputs.shape[0], inputs.shape[1]])
         timestep_broadcast = tf.reshape(timestep_broadcast, [-1, 1])
         # timestep_broadcast = tf.broadcast_to(timestep_broadcast, shape=(embedded.shape[0],1))
-        embedded = tf.concat([embedded, embedded_dirs, timestep_broadcast], -1) # TODO inputs
+        embedded = tf.concat([embedded, embedded_dirs, timestep_broadcast], -1)
 
-    outputs_flat = batchify(fn, netchunk)(embedded) # TODO call model
+    outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = tf.reshape(outputs_flat, list(
         inputs.shape[:-1]) + [outputs_flat.shape[-1]])
     return outputs
@@ -209,7 +209,7 @@ def render_rays(ray_batch,
         z_vals[..., :, None]  # [N_rays=1024, N_samples=64, 3]
 
     # Evaluate model at each point.
-    raw = network_query_fn(pts, viewdirs, timestep_embed, network_fn)  # [N_rays=1024, N_samples=64, 4] # TODO
+    raw = network_query_fn(pts, viewdirs, timestep_embed, network_fn)  # [N_rays=1024, N_samples=64, 4] 
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(
         raw, z_vals, rays_d)
 
@@ -332,7 +332,7 @@ def render(H, W, focal, timestep_embed,
         rays = tf.concat([rays, viewdirs], axis=-1)
 
     # Render and reshape
-    all_ret = batchify_rays(rays, timestep_embed, chunk, **kwargs) # TODO
+    all_ret = batchify_rays(rays, timestep_embed, chunk, **kwargs) 
     for k in all_ret:
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = tf.reshape(all_ret[k], k_sh)
@@ -343,7 +343,7 @@ def render(H, W, focal, timestep_embed,
     return ret_list + [ret_dict]
 
 
-def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):  # TODO
+def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0, t=''):
 
     H, W, focal = hwf
 
@@ -373,7 +373,10 @@ def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs
 
         if savedir is not None:
             rgb8 = to8b(rgbs[-1])
-            filename = os.path.join(savedir, '{:03d}.png'.format(i))
+            if t != '':
+                filename = os.path.join(savedir, '{:03d}_t_{}.png'.format(i, t))
+            else:
+                filename = os.path.join(savedir, '{:03d}.png'.format(i))
             imageio.imwrite(filename, rgb8)
 
     rgbs = np.stack(rgbs, 0)
@@ -395,7 +398,7 @@ def create_nerf(args):
     output_ch = 4
     skips = [4]
 
-    model = init_nerf_model( #TODO
+    model = init_nerf_model( 
         D=args.netdepth, W=args.netwidth,
         input_ch=input_ch, output_ch=output_ch, skips=skips,
         input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=1)
@@ -404,20 +407,20 @@ def create_nerf(args):
 
     model_fine = None
     if args.N_importance > 0:
-        model_fine = init_nerf_model( #todo
+        model_fine = init_nerf_model( 
             D=args.netdepth_fine, W=args.netwidth_fine,
             input_ch=input_ch, output_ch=output_ch, skips=skips,
             input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=1)
         grad_vars += model_fine.trainable_variables
         models['model_fine'] = model_fine
 
-    def network_query_fn(inputs, viewdirs, timestep_embed, network_fn): return run_network( # TODO
+    def network_query_fn(inputs, viewdirs, timestep_embed, network_fn): return run_network( 
         inputs, viewdirs, timestep_embed, network_fn,
         embed_fn=embed_fn,
         embeddirs_fn=embeddirs_fn,
         netchunk=args.netchunk)
 
-    render_kwargs_train = { # TODO
+    render_kwargs_train = { 
         'network_query_fn': network_query_fn,
         'perturb': args.perturb,
         'N_importance': args.N_importance,
@@ -676,7 +679,7 @@ def train():
             file.write(open(args.config, 'r').read())
 
     # Create nerf model
-    render_kwargs_train, render_kwargs_test, start, grad_vars, models = create_nerf( #todo
+    render_kwargs_train, render_kwargs_test, start, grad_vars, models = create_nerf( 
         args)
 
     bds_dict = {
@@ -705,7 +708,7 @@ def train():
             test_timesteps.extend([timesteps[i]] * H * W)
         test_timesteps = np.asarray(test_timesteps)
         rgbs, _ = render_path(render_poses, hwf, test_timesteps, args.chunk, render_kwargs_test,
-                              gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor) # TODO
+                              gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor) 
         print('Done rendering', testsavedir)
         imageio.mimwrite(os.path.join(testsavedir, 'video.mp4'),
                          to8b(rgbs), fps=30, quality=8)
@@ -846,11 +849,11 @@ def train():
 
                 # Make predictions for color, disparity, accumulated opacity.
                 if use_batching:
-                    rgb, disp, acc, extras = render(  # TODO
+                    rgb, disp, acc, extras = render(  
                         H, W, focal, batch_timestep, chunk=args.chunk, rays=batch_rays,
                         verbose=i < 10, retraw=True, **render_kwargs_train)
                 else:
-                    rgb, disp, acc, extras = render( # TODO
+                    rgb, disp, acc, extras = render( 
                         H, W, focal, timestep, chunk=args.chunk, rays=batch_rays,
                         verbose=i < 10, retraw=True, **render_kwargs_train)
 
@@ -885,44 +888,41 @@ def train():
                 for k in models:
                     save_weights(models[k], k, i)
 
+            # render_timesteps = []
+            # for i in i_test:
+            #     render_timesteps.extend([timesteps[i]] * H * W)
+            # render_timesteps = np.asarray(render_timesteps)
+
             if i % args.i_video == 0 and i > 0:
-                if use_batching:
+                # print("render_timesteps", render_timesteps.shape)
+                for idx_test in i_test:
                     rgbs, disps = render_path(
-                        render_poses, hwf, batch_timestep, args.chunk, render_kwargs_test)  # TODO
-                else:
-                    rgbs, disps = render_path(
-                        render_poses, hwf, timestep, args.chunk, render_kwargs_test) # TODO
-                print('Done, saving', rgbs.shape, disps.shape)
-                moviebase = os.path.join(
-                    basedir, expname, '{}_spiral_{:06d}_'.format(expname, i))
-                imageio.mimwrite(moviebase + 'rgb.mp4',
-                                 to8b(rgbs), fps=30, quality=8)
-                imageio.mimwrite(moviebase + 'disp.mp4',
-                                 to8b(disps / np.max(disps)), fps=30, quality=8)
+                        render_poses, hwf, [timesteps[idx_test]] * H * W, args.chunk, render_kwargs_test)  # TODO
+                    print('Done, saving', rgbs.shape, disps.shape)
+                    moviebase = os.path.join(
+                        basedir, expname, '{}_spiral_{:06d}_timestep_{}'.format(expname, i, idx_test))
+                    imageio.mimwrite(moviebase + 'rgb.mp4',
+                                     to8b(rgbs), fps=30, quality=8)
+                    imageio.mimwrite(moviebase + 'disp.mp4',
+                                     to8b(disps / np.max(disps)), fps=30, quality=8)
 
                 if args.use_viewdirs:
                     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
-                    if use_batching:
+                    for idx_test in i_test:
                         rgbs_still, _ = render_path(
-                            render_poses, hwf, batch_timestep, args.chunk, render_kwargs_test)  # TODO
-                    else:
-                        rgbs_still, _ = render_path(
-                            render_poses, hwf, timestep, args.chunk, render_kwargs_test) # TODO
-                    render_kwargs_test['c2w_staticcam'] = None
-                    imageio.mimwrite(moviebase + 'rgb_still.mp4',
-                                     to8b(rgbs_still), fps=30, quality=8)
+                            render_poses, hwf, [timesteps[idx_test]] * H * W, args.chunk, render_kwargs_test)
+                        render_kwargs_test['c2w_staticcam'] = None
+                        imageio.mimwrite(moviebase + 'rgb_still_timestep_{}.mp4'.format(idx_test),
+                                         to8b(rgbs_still), fps=30, quality=8)
 
             if i % args.i_testset == 0 and i > 0:
                 testsavedir = os.path.join(
                     basedir, expname, 'testset_{:06d}'.format(i))
                 os.makedirs(testsavedir, exist_ok=True)
                 print('test poses shape', poses[i_test].shape)
-                if use_batching:
-                    render_path(poses[i_test], hwf, batch_timestep, args.chunk, render_kwargs_test,
-                                gt_imgs=images[i_test], savedir=testsavedir)  # TODO
-                else:
-                    render_path(poses[i_test], hwf, timestep, args.chunk, render_kwargs_test,
-                                gt_imgs=images[i_test], savedir=testsavedir) # TODO
+                for idx in i_test:
+                    render_path(poses[i_test], hwf, [timesteps[idx]] * H * W, args.chunk, render_kwargs_test,
+                                gt_imgs=images[i_test], savedir=testsavedir, t=timesteps[idx])
                 print('Saved test set')
 
             if i % args.i_print == 0 or i < 10:
