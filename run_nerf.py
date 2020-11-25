@@ -347,7 +347,40 @@ def render(H, W, focal, timestep_embed,
     return ret_list + [ret_dict]
 
 
-def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0, t=''):
+def render_timesteps(c2w, hwf, sorted_timesteps, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
+    H, W, focal = hwf
+
+    if render_factor != 0:
+        # Render downsampled for speed
+        H = H//render_factor
+        W = W//render_factor
+        focal = focal/render_factor
+
+    rgbs = []
+    disps = []
+    for i, input_timestep in enumerate(sorted_timesteps):
+        rgb, disp, acc, _ = render(
+            H, W, focal, [input_timestep] * H * W, chunk=chunk, c2w=c2w[:3, :4], **render_kwargs)
+        rgbs.append(rgb.numpy())
+        disps.append(disp.numpy())
+        if i == 0:
+            print(rgb.shape, disp.shape)
+
+        if gt_imgs is not None and render_factor == 0:
+            p = -10. * np.log10(np.mean(np.square(rgb - gt_imgs[i])))
+            print(p)
+
+        if savedir is not None:
+            rgb8 = to8b(rgbs[-1])
+            filename = os.path.join(savedir, '{:03d}.png'.format(i))
+            print("filename", filename)
+            imageio.imwrite(filename, rgb8)
+    rgbs = np.stack(rgbs, 0)
+    disps = np.stack(disps, 0)
+
+    return rgbs, disps
+
+def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
 
     H, W, focal = hwf
 
@@ -377,10 +410,7 @@ def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs
 
         if savedir is not None:
             rgb8 = to8b(rgbs[-1])
-            if t != '':
-                filename = os.path.join(savedir, '{:03d}_t_{}.png'.format(i, t))
-            else:
-                filename = os.path.join(savedir, '{:03d}.png'.format(i))
+            filename = os.path.join(savedir, '{:03d}.png'.format(i))
             imageio.imwrite(filename, rgb8)
 
     rgbs = np.stack(rgbs, 0)
@@ -738,7 +768,7 @@ def train():
 
     # Prepare raybatch tensor if batching random rays
     N_rand = args.N_rand
-    use_batching = not args.no_batching
+    use_batching = True #not args.no_batching
     if use_batching:
         # For random ray batching.
         #
@@ -797,7 +827,7 @@ def train():
     writer = tf.contrib.summary.create_file_writer(
         os.path.join(basedir, 'summaries', expname))
     writer.set_as_default()
-
+    flag = False
     with tqdm(range(start, N_iters), dynamic_ncols=True, smoothing=0.1) as pbar:
         for i in pbar:
             time0 = time.time()
@@ -898,32 +928,28 @@ def train():
                 for k in models:
                     save_weights(models[k], k, i)
 
-            # render_timesteps = []
-            # for i in i_test:
-            #     render_timesteps.extend([timesteps[i]] * H * W)
-            # render_timesteps = np.asarray(render_timesteps)
 
-            if i % args.i_video == 0 and i > 0:
-                # print("render_timesteps", render_timesteps.shape)
-                for idx_test in i_test:
-                    rgbs, disps = render_path(
-                        render_poses, hwf, [timesteps[idx_test]] * H * W, args.chunk, render_kwargs_test)  # TODO
-                    print('Done, saving', rgbs.shape, disps.shape)
-                    moviebase = os.path.join(
-                        basedir, expname, '{}_spiral_{:06d}_timestep_{}'.format(expname, i, idx_test))
-                    imageio.mimwrite(moviebase + 'rgb.mp4',
-                                     to8b(rgbs), fps=30, quality=8)
-                    imageio.mimwrite(moviebase + 'disp.mp4',
-                                     to8b(disps / np.max(disps)), fps=30, quality=8)
-
+            if not flag or i % args.i_video == 0 and i > 0:
+                flag = True
+                print(f"saving video at step {i}")
+                set_pose = poses[i_test[0]]
+                sorted_timesteps = sorted(timesteps)
+                rgbs, disps = render_timesteps(
+                    set_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test)  # TODO
+                print('Done, saving', rgbs.shape, disps.shape)
+                moviebase = os.path.join(
+                    basedir, expname, '{}_spiral_{:06d}_timestep_{}'.format(expname, i))
+                imageio.mimwrite(moviebase + 'rgb.mp4',
+                                 to8b(rgbs), fps=30, quality=8)
+                imageio.mimwrite(moviebase + 'disp.mp4',
+                                 to8b(disps / np.max(disps)), fps=30, quality=8)
                 if args.use_viewdirs:
                     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
-                    for idx_test in i_test:
-                        rgbs_still, _ = render_path(
-                            render_poses, hwf, [timesteps[idx_test]] * H * W, args.chunk, render_kwargs_test)
-                        render_kwargs_test['c2w_staticcam'] = None
-                        imageio.mimwrite(moviebase + 'rgb_still_timestep_{}.mp4'.format(idx_test),
-                                         to8b(rgbs_still), fps=30, quality=8)
+                    rgbs_still, _ = render_timesteps(
+                        set_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test)
+                    render_kwargs_test['c2w_staticcam'] = None
+                    imageio.mimwrite(moviebase + 'rgb_still.mp4',
+                                     to8b(rgbs_still), fps=30, quality=8)
 
             if i % args.i_testset == 0 and i > 0:
                 testsavedir = os.path.join(
@@ -932,7 +958,7 @@ def train():
                 print('test poses shape', poses[i_test].shape)
                 for idx in i_test:
                     render_path(poses[i_test], hwf, [timesteps[idx]] * H * W, args.chunk, render_kwargs_test,
-                                gt_imgs=images[i_test], savedir=testsavedir, t=timesteps[idx])
+                                gt_imgs=images[i_test], savedir=testsavedir)
                 print('Saved test set')
 
             if i % args.i_print == 0 or i < 10:
