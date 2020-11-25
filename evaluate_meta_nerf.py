@@ -1,13 +1,15 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import random
-from reptile.metatrain_nerf import train
-from reptile.args import train_kwargs, evaluate_kwargs
-from reptile.eval import evaluate
+from reptile.nerf_reptile import meta_evaluate
 from data_utils import read_dataset
 from run_nerf import create_nerf
 from run_nerf import config_parser
 import numpy as np
-import os
+from tensorboardX import SummaryWriter
+from pprint import pprint
+
 
 
 def parse_args():
@@ -16,11 +18,7 @@ def parse_args():
                         default='data/nerf_synthetic/metacubes/',
                         help="path of directory containing all scene " +
                         "directories, each containing posed RGB images ")
-    parser.add_argument('--pretrained', help='evaluate a pre-trained model',
-                        action='store_true', default=False)
     parser.add_argument('--seed', help='random seed', default=0, type=int)
-    # parser.add_argument(
-    #     '--checkpoint', help='checkpoint directory', default='model_checkpoint')
     parser.add_argument(
         '--shots', help='number of examples per class', default=5, type=int)
     parser.add_argument(
@@ -59,27 +57,40 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
     ckpt_path = os.path.join(args.basedir, args.expname)
-    if not os.path.exists(ckpt_path):
-        os.mkdir(ckpt_path)
+    assert os.path.exists(ckpt_path)
     if args.random_seed is not None:
         print('Fixing random seed', args.random_seed)
         np.random.seed(args.random_seed)
         tf.compat.v1.set_random_seed(args.random_seed)
-    random.seed(args.seed)
+        random.seed(args.seed)
     # TODO seed everything
     train_set, test_set = read_dataset(args.metadatadir)
 
     render_kwargs_train, render_kwargs_test, start, grad_vars, models =\
         create_nerf(args)
 
-    train(models, grad_vars,
-          train_set,
-          test_set,
-          render_kwargs_train,
-          render_kwargs_test,
-          ckpt_path,
-          args.chunk, args.N_rand,
-          args.N_importance, args.use_viewdirs,
-          args.half_res, args.testskip, args.white_bkgd,
-          **train_kwargs(args),
-          inner_learning_rate=args.learning_rate)
+    #
+    optimizer = tf.keras.optimizers.Adam(
+        args.learning_rate, beta_1=0)
+    test_writer = SummaryWriter(ckpt_path + '/test')
+    loss_dict = meta_evaluate(
+        models,
+        metalearning_iter=start,
+        test_scenes=test_set,
+        N_importance=args.N_importance,
+        half_res=args.half_res,
+        testskip=args.testskip,
+        white_bkgd=args.white_bkgd,
+        log_fn=print,
+        save_dir=ckpt_path+ '/test',
+        N_rand=args.N_rand,
+        inner_iters=args.inner_iters,
+        chunk=args.chunk,
+        use_viewdirs=args.use_viewdirs,
+        grad_vars=grad_vars,
+        optimizer=optimizer,
+        render_kwargs_train=render_kwargs_train,
+        render_kwargs_test=render_kwargs_test,
+        render_test_set=False,
+        writer=test_writer)
+    pprint(loss_dict)

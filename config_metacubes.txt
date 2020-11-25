@@ -1,4 +1,4 @@
-expname = metacubes_nov19_v1
+expname = metacubes_nov24_mbs8_ls0-1_iters200_net-depth8
 basedir = ./logs
 datadir = ./metacubes
 dataset_type = blender
@@ -13,4 +13,4 @@ use_viewdirs = True
 
 white_bkgd = True
 
-N_rand = 2048
+N_rand = 1024
