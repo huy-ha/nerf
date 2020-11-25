@@ -48,7 +48,8 @@ def load_blender_data(basedir, half_res=False, testskip=1):
     all_imgs = []
     all_poses = []
     all_timesteps = []
-
+    max_time = float('-inf')
+    min_time = float('inf')
     counts = [0]
     for s in splits:
         meta = metas[s]
@@ -64,7 +65,10 @@ def load_blender_data(basedir, half_res=False, testskip=1):
             fname = os.path.join(basedir, frame['file_path'] + '.png')
             imgs.append(imageio.imread(fname))
             poses.append(np.array(frame['transform_matrix']))
-            timesteps.append(frame['timestep'])
+            timestep = frame['timestep']
+            timesteps.append(timestep)
+            max_time = max(max_time, timestep)
+            min_time = min(min_time, timestep)
         imgs = (np.array(imgs) / 255.).astype(np.float32) # keep all 4 channels (RGBA)
         poses = np.array(poses).astype(np.float32)
         counts.append(counts[-1] + imgs.shape[0])
@@ -77,7 +81,7 @@ def load_blender_data(basedir, half_res=False, testskip=1):
     imgs = np.concatenate(all_imgs, 0) # 826 800 800 4
     poses = np.concatenate(all_poses, 0) # 826 4 4
     timesteps = np.concatenate(all_timesteps, 0) # 826
-
+    timesteps = [(t - min_time)/max_time - 0.5 for t in timesteps]
     H, W = imgs[0].shape[:2]
     camera_angle_x = float(meta['camera_angle_x'])
     focal = .5 * W / np.tan(.5 * camera_angle_x)
@@ -89,7 +93,6 @@ def load_blender_data(basedir, half_res=False, testskip=1):
         H = H//2
         W = W//2
         focal = focal/2.
-        
     return imgs, poses, render_poses, [H, W, focal], i_split, timesteps
 
 

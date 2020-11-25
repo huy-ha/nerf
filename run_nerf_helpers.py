@@ -77,7 +77,7 @@ def get_embedder(multires, i=0):
 
 # Model architecture
 
-def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, input_t=1, output_ch=4, skips=[4], use_viewdirs=False): # TODO
+def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, input_t=1, output_ch=4, skips=[4], use_viewdirs=False): 
 
     relu = tf.keras.layers.ReLU()
     def dense(W, act=relu): return tf.keras.layers.Dense(W, activation=act)
@@ -88,15 +88,17 @@ def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, input_t=1, output_
     input_ch_views = int(input_ch_views)
 
     inputs = tf.keras.Input(shape=(input_ch + input_ch_views + input_t))
-    inputs_pts, inputs_views, input_timestep = tf.split(inputs, [input_ch, input_ch_views, input_t], -1) # todo
+    print("input_ch + input_ch_views + input_t", input_ch + input_ch_views + input_t)
+    inputs_pts, inputs_views, input_timestep = tf.split(inputs, [input_ch, input_ch_views, input_t], -1) 
     # inputs_pts, inputs_views = tf.split(inputs, [input_ch, input_ch_views], -1)
-    inputs_pts.set_shape([None, input_ch])
-    inputs_views.set_shape([None, input_ch_views])
-    input_timestep.set_shape([None, input_t])
+    inputs_pts.set_shape([None, input_ch]) # (?, 63)
+    inputs_views.set_shape([None, input_ch_views]) # (?, 27)
+    input_timestep.set_shape([None, input_t]) # (?, 27)
 
-    print(inputs.shape, inputs_pts.shape, inputs_views.shape, input_timestep.shape)
+    print("inputs {}, inputs_pts {}, inputs_views {}, input_timestep {}".format(inputs.shape, inputs_pts.shape, inputs_views.shape, input_timestep.shape))
     # print(inputs.shape, inputs_pts.shape, inputs_views.shape)
-    outputs = inputs_pts
+    outputs = tf.concat([inputs_pts, input_timestep], -1) # (?, 90) # inputs_pts
+    print("outputs.shape", outputs.shape)
     for i in range(D):
         outputs = dense(W)(outputs)
         if i in skips:

@@ -27,22 +27,26 @@ def batchify(fn, chunk):
     return ret
 
 
-def run_network(inputs, viewdirs, timestep_embed, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
+def run_network(inputs, viewdirs, timestep, fn, embed_fn, embeddirs_fn, time_embed_fn, netchunk=1024*64):
     """Prepares inputs and applies network 'fn'."""
 
-    inputs_flat = tf.reshape(inputs, [-1, inputs.shape[-1]])
+    inputs_flat = tf.reshape(inputs, [-1, inputs.shape[-1]]) # 65536 x 3
 
-    embedded = embed_fn(inputs_flat)
+    embedded = embed_fn(inputs_flat) # 65536 x 63
     if viewdirs is not None:
-        input_dirs = tf.broadcast_to(viewdirs[:, None], inputs.shape)
-        input_dirs_flat = tf.reshape(input_dirs, [-1, input_dirs.shape[-1]])
-        embedded_dirs = embeddirs_fn(input_dirs_flat)
+        input_dirs = tf.broadcast_to(viewdirs[:, None], inputs.shape) # 1024 x 64 x 3
+        input_dirs_flat = tf.reshape(input_dirs, [-1, input_dirs.shape[-1]]) # 65536 x 3
+        embedded_dirs = embeddirs_fn(input_dirs_flat) # 65536 x 27
         # embedded = tf.concat([embedded, embedded_dirs, tf.broadcast_to(timestep_embed, (embedded_dirs.shape[0], timestep_embed.shape[-1]))], -1) # hot encode
-        timestep_broadcast = tf.constant(timestep_embed, dtype=tf.float32)
-        timestep_broadcast = tf.broadcast_to(timestep_broadcast[:, None], [inputs.shape[0], inputs.shape[1]])
-        timestep_broadcast = tf.reshape(timestep_broadcast, [-1, 1])
+
+        timestep_broadcast = tf.constant(timestep, dtype=tf.float32) # 1024
+        timestep_broadcast = tf.broadcast_to(timestep_broadcast[:, None, None], inputs.shape)
+        # timestep_broadcast = tf.broadcast_to(timestep_broadcast[:, None], [inputs.shape[0], inputs.shape[1]]) # 1024 x 64
+        # timestep_broadcast = tf.reshape(timestep_broadcast, [-1, 1]) # 65536 x 1
+        timestep_broadcast = tf.reshape(timestep_broadcast, [-1, timestep_broadcast.shape[-1]]) # 65536 x 27
+        embedded_time = time_embed_fn(timestep_broadcast) # 65536 x 9
         # timestep_broadcast = tf.broadcast_to(timestep_broadcast, shape=(embedded.shape[0],1))
-        embedded = tf.concat([embedded, embedded_dirs, timestep_broadcast], -1)
+        embedded = tf.concat([embedded, embedded_dirs, embedded_time], -1) # 65536 x 99
 
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = tf.reshape(outputs_flat, list(
@@ -388,20 +392,23 @@ def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs
 def create_nerf(args):
     """Instantiate NeRF's MLP model."""
 
-    embed_fn, input_ch = get_embedder(args.multires, args.i_embed) #10, 0
+    embed_fn, input_ch = get_embedder(args.multires, args.i_embed) #10, 0 3D
 
     input_ch_views = 0
     embeddirs_fn = None
     if args.use_viewdirs:
         embeddirs_fn, input_ch_views = get_embedder(
-            args.multires_views, args.i_embed) # embedding dim
+            args.multires_views, args.i_embed) # embedding dim 4, 0 2D
+    # high frequency encoding for time
+    time_embed_fn, input_t = get_embedder(args.temporal_enc, args.i_embed)
+
     output_ch = 4
     skips = [4]
 
     model = init_nerf_model( 
         D=args.netdepth, W=args.netwidth,
         input_ch=input_ch, output_ch=output_ch, skips=skips,
-        input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=1)
+        input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=input_t)
     grad_vars = model.trainable_variables
     models = {'model': model}
 
@@ -410,7 +417,7 @@ def create_nerf(args):
         model_fine = init_nerf_model( 
             D=args.netdepth_fine, W=args.netwidth_fine,
             input_ch=input_ch, output_ch=output_ch, skips=skips,
-            input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=1)
+            input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=input_t)
         grad_vars += model_fine.trainable_variables
         models['model_fine'] = model_fine
 
@@ -418,6 +425,7 @@ def create_nerf(args):
         inputs, viewdirs, timestep_embed, network_fn,
         embed_fn=embed_fn,
         embeddirs_fn=embeddirs_fn,
+        time_embed_fn=time_embed_fn,
         netchunk=args.netchunk)
 
     render_kwargs_train = { 
@@ -530,6 +538,8 @@ def config_parser():
                         help='log2 of max freq for positional encoding (3D location)')
     parser.add_argument("--multires_views", type=int, default=4,
                         help='log2 of max freq for positional encoding (2D direction)')
+    parser.add_argument("--temporal_enc", type=int, default=4,
+                        help='log2 of max freq for temporal encoding (timestep)')
     parser.add_argument("--raw_noise_std", type=float, default=0.,
                         help='std dev of noise added to regularize sigma_a output, 1e0 recommended')
 
@@ -575,7 +585,7 @@ def config_parser():
                         help='frequency of tensorboard image logging')
     parser.add_argument("--i_weights", type=int, default=10000,
                         help='frequency of weight ckpt saving')
-    parser.add_argument("--i_testset", type=int, default=50000,
+    parser.add_argument("--i_testset", type=int, default=1,
                         help='frequency of testset saving')
     parser.add_argument("--i_video",   type=int, default=50000,
                         help='frequency of render_poses video saving')
@@ -728,7 +738,7 @@ def train():
 
     # Prepare raybatch tensor if batching random rays
     N_rand = args.N_rand
-    use_batching = not args.no_batching
+    use_batching = True #not args.no_batching # TODO
     if use_batching:
         # For random ray batching.
         #
