@@ -931,14 +931,21 @@ def train():
 
             if not flag or i % args.i_video == 0 and i > 0:
                 flag = True
+                frame_savedir = os.path.join(
+                    basedir, expname, 'frame_{:06d}'.format(i))
                 print(f"saving video at step {i}")
                 set_pose = poses[i_test[0]]
+                unseen_time = timesteps[i_test[0]]
                 sorted_timesteps = sorted(timesteps)
+                idx = sorted_timesteps.index(unseen_time)
+                sorted_timesteps = sorted_timesteps[idx-2:idx+3]
+                if not os.path.exists(frame_savedir):
+                    os.makedirs(frame_savedir)
                 rgbs, disps = render_timesteps(
-                    set_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test)  # TODO
+                    set_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test, savedir=frame_savedir)  # TODO
                 print('Done, saving', rgbs.shape, disps.shape)
                 moviebase = os.path.join(
-                    basedir, expname, '{}_spiral_{:06d}_timestep_{}'.format(expname, i))
+                    basedir, expname, '{}_timestep_{:06d}'.format(expname, i))
                 imageio.mimwrite(moviebase + 'rgb.mp4',
                                  to8b(rgbs), fps=30, quality=8)
                 imageio.mimwrite(moviebase + 'disp.mp4',
@@ -946,7 +953,7 @@ def train():
                 if args.use_viewdirs:
                     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
                     rgbs_still, _ = render_timesteps(
-                        set_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test)
+                        set_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test, savedir=frame_savedir)
                     render_kwargs_test['c2w_staticcam'] = None
                     imageio.mimwrite(moviebase + 'rgb_still.mp4',
                                      to8b(rgbs_still), fps=30, quality=8)
