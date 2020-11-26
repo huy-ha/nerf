@@ -936,12 +936,13 @@ def train():
                 print(f"saving video at step {i}")
                 set_pose = poses[i_test[0]]
                 unseen_time = timesteps[i_test[0]]
-                sorted_timesteps = sorted(timesteps)
+                sorted_timesteps = sorted(list(set(timesteps)))
                 idx = sorted_timesteps.index(unseen_time)
                 print("idx", idx)
-                minidx = max(0, idx-20)
-                maxidx = min(idx+21, len(sorted_timesteps))
-                sorted_timesteps = sorted_timesteps[minidx:maxidx]
+                # minidx = max(0, idx-20)
+                # maxidx = min(idx+21, len(sorted_timesteps))
+                # sorted_timesteps = sorted_timesteps[minidx:maxidx]
+                sorted_timesteps = sorted_timesteps[idx-5:idx+6]
                 if not os.path.exists(frame_savedir):
                     os.makedirs(frame_savedir)
                 rgbs, disps = render_timesteps(
