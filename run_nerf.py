@@ -938,7 +938,10 @@ def train():
                 unseen_time = timesteps[i_test[0]]
                 sorted_timesteps = sorted(timesteps)
                 idx = sorted_timesteps.index(unseen_time)
-                sorted_timesteps = sorted_timesteps[idx-2:idx+3]
+                print("idx", idx)
+                minidx = max(0, idx-20)
+                maxidx = min(idx+21, len(sorted_timesteps))
+                sorted_timesteps = sorted_timesteps[minidx:maxidx]
                 if not os.path.exists(frame_savedir):
                     os.makedirs(frame_savedir)
                 rgbs, disps = render_timesteps(
@@ -953,7 +956,7 @@ def train():
                 if args.use_viewdirs:
                     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
                     rgbs_still, _ = render_timesteps(
-                        set_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test, savedir=frame_savedir)
+                        set_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test)
                     render_kwargs_test['c2w_staticcam'] = None
                     imageio.mimwrite(moviebase + 'rgb_still.mp4',
                                      to8b(rgbs_still), fps=30, quality=8)
