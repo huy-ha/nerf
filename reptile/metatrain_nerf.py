@@ -87,7 +87,7 @@ def train(models, grad_vars,
                     grad_vars, optimizer, render_kwargs_train, render_kwargs_test,
                     render_test_set=i % 100 == 0,
                     writer=test_writer)
-            for key, value in loss_dict:
+            for key, value in loss_dict.items():
                 if 'tran' in key:
                     test_writer.add_histogram(key, value, i)
                 elif 'psnr0' not in key or N_importance > 0:

@@ -166,7 +166,8 @@ def meta_evaluate(models,
                   render_kwargs_train,
                   render_kwargs_test,
                   render_test_set=False,
-                  writer=None):
+                  writer=None,
+                  max_eval_scenes=None):
     old_vars = {k: deepcopy(v.get_weights())
                 for k, v in models.items()}
     train_losses = []
@@ -186,7 +187,10 @@ def meta_evaluate(models,
     test_final_psnrs = []
     test_final_psnr0s = []
     test_final_transs = []
-    for test_scene_path in test_scenes:
+    for test_scene_i,test_scene_path in enumerate(test_scenes):
+        if max_eval_scenes is not None and \
+            test_scene_i > max_eval_scenes-1:
+            break
         set_variables(models, old_vars)
         # TODO Reset optimizer??
         scene_id, images, poses, render_poses, hwf, i_split = load_data(
@@ -348,7 +352,9 @@ def log_qualitative_results(writer,
     if not os.path.exists(testimgdir):
         os.makedirs(testimgdir, exist_ok=True)
     imageio.imwrite(os.path.join(
-        testimgdir, '{:06d}.png'.format(metalearning_iter)), to8b(rgb))
+        testimgdir, '{:06d}_{}.png'.format(
+            metalearning_iter,
+        scene_id)), to8b(rgb))
 
     writer.add_image(
         f'rgb/{scene_id}',
