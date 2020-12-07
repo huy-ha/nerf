@@ -1,4 +1,4 @@
-expname = metacubes_nov24_mbs8_ls0-1_iters200_net-depth8
+expname = dec6-metanerf
 basedir = ./logs
 datadir = ./metacubes
 dataset_type = blender
@@ -18,5 +18,5 @@ N_rand = 128
 inner-iters = 32
 meta-batch = 2
 meta-iters = 100000
-eval-interval = 50
+eval-interval = 100
 learning-rate = 5e-4

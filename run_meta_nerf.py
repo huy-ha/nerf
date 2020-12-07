@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument('--learning-rate',
                         help='Inner loop step size', default=1e-3, type=float)
     parser.add_argument(
-        '--meta-step', help='meta-training step size', default=0.05, type=float)
+        '--meta-step', help='meta-training step size', default=0.1, type=float)
     parser.add_argument('--meta-step-final', help='meta-training step size by the end',
                         default=0.1, type=float)
     parser.add_argument(
@@ -69,6 +69,7 @@ if __name__ == '__main__':
     random.seed(args.seed)
     # TODO seed everything
     train_set, test_set = read_dataset(args.metadatadir)
+    print(f'TRAIN: {len(train_set)} | TEST: {len(test_set)}')
 
     render_kwargs_train, render_kwargs_test, start, grad_vars, models =\
         create_nerf(args)
