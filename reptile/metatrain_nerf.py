@@ -93,7 +93,7 @@ def train(models, grad_vars,
                 if 'tran' in key:
                     test_writer.add_histogram(key, value, i)
                 elif 'psnr0' not in key or N_importance > 0:
-                    test_writer.scalar(key, value, i)
+                    test_writer.add_scalar(key, value, i)
             output = f'[Average Eval Scenes] ({i} | '
             output += f'Average Loss: {loss_dict["loss/mean/test"]:.5f} | '
             output += f'Average PSNR: {loss_dict["psnr/mean/test"]:.2f} | '
@@ -101,7 +101,7 @@ def train(models, grad_vars,
             output += f'Final PSNR: {loss_dict["psnr/final/test"]:.2f} )'
             log_fn(output)
 
-        if i % 10 == 0 or i == meta_iters-1:
+        if i % 100 == 0 or i == meta_iters-1:
             for key in models:
                 path = os.path.join(
                     save_dir, '{}_{:06d}.npy'.format(key, i))

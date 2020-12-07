@@ -47,11 +47,9 @@ def meta_step(models,
     psnrs = []
     psnr0s = []
     transs = []
-    pbar = tqdm(_sample_scene(
-        dataset,  half_res, testskip,
-        white_bkgd, meta_batch_size),
-        total=meta_batch_size)
-    for (scene_path, images, poses, render_poses, hwf, i_split) in pbar:
+    for (scene_path, images, poses, render_poses, hwf, i_split) in  _sample_scene(
+            dataset,  half_res, testskip,
+            white_bkgd, meta_batch_size):
         optimizer = create_optimizer()
         H, W, focal = hwf
         H, W = int(H), int(W)
@@ -76,7 +74,6 @@ def meta_step(models,
                                 grad_vars,
                                 optimizer,
                                 render_kwargs_train)
-            pbar.set_description(f'Inner Loss: {float(loss):.02e}')
             losses.append(loss)
             psnrs.append(psnr)
             psnr0s.append(psnr0 if psnr0 is not None else 0.0)
@@ -225,6 +222,8 @@ def meta_evaluate(models,
             loss, psnr, psnr0, trans = train_innerstep(
                 batch_rays, target_s, chunk, H, W, focal,
                 grad_vars, optimizer, render_kwargs_train)
+            if psnr0 is None:
+                psnr0 = 0.0
             scene_losses.append(loss)
             scene_psnrs.append(psnr)
             scene_psnr0s.append(psnr0)
@@ -265,6 +264,8 @@ def meta_evaluate(models,
             loss, psnr, psnr0, trans = \
                 get_losses(batch_rays, target_s, chunk, H,
                            W, focal, render_kwargs_train)
+            if psnr0 is None:
+                psnr0 = 0.0
             scene_losses.append(loss)
             scene_psnrs.append(psnr)
             scene_psnr0s.append(psnr0)
@@ -334,7 +335,7 @@ def log_qualitative_results(writer,
     H, W, focal = hwf
     i_train, i_val, i_test = i_split
     testsavedir = os.path.join(
-        save_dir, 'testset_iter{:06d}_scene{}'.format(
+        save_dir, 'testset_iter/{:06d}/scene{}'.format(
             metalearning_iter, scene_id))
     os.makedirs(testsavedir, exist_ok=True)
     render_path(poses[i_test], hwf, chunk, render_kwargs_test,
