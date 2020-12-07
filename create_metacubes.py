@@ -6,15 +6,13 @@ import numpy as np
 import random
 import time
 
-DEBUG = False
-NUM_SCENES = 500
-VIEWS = 10
-RESOLUTION = 800
-RESULTS_PATH = 'data/metacubes_nov19/'
+NUM_SCENES = 1
+VIEWS = 30
+RESOLUTION = 128
+RESULTS_PATH = 'data/metacubes_dec6/'
 DEPTH_SCALE = 1.4
 COLOR_DEPTH = 8
 FORMAT = 'PNG'
-UPPER_VIEWS = True
 CIRCLE_FIXED_START = (0, 0, 0)
 CIRCLE_FIXED_END = (.7, 0, 0)
 
@@ -23,8 +21,8 @@ PI = np.pi
 scene = bpy.data.scenes[0]
 for scene in bpy.data.scenes:
     scene.render.threads_mode = 'FIXED'
-    scene.render.threads = 6
     scene.render.image_settings.compression = 95
+
 
 def parent_obj_to_camera(b_camera):
     origin = (0, 0, 1)
@@ -148,9 +146,8 @@ if __name__ == '__main__':
         vertical_diff = CIRCLE_FIXED_END[0] - CIRCLE_FIXED_START[0]
         rotation_mode = 'XYZ'
 
-        if not DEBUG:
-            for output_node in [tree.nodes['Depth Output'], tree.nodes['Normal Output']]:
-                output_node.base_path = ''
+        for output_node in [tree.nodes['Depth Output'], tree.nodes['Normal Output']]:
+            output_node.base_path = ''
 
         out_data['frames'] = []
 
@@ -171,10 +168,7 @@ if __name__ == '__main__':
             tree.nodes['Depth Output'].file_slots[0].path = scene.render.filepath + "_depth_"
             tree.nodes['Normal Output'].file_slots[0].path = scene.render.filepath + "_normal_"
 
-            if DEBUG:
-                break
-            else:
-                bpy.ops.render.render(write_still=True)  # render still
+            bpy.ops.render.render(write_still=True)  # render still
 
             frame_data = {
                 'file_path': scene.render.filepath,
@@ -186,6 +180,6 @@ if __name__ == '__main__':
             b_empty.rotation_euler[0] = CIRCLE_FIXED_START[0] + \
                 (np.cos(radians(stepsize*i))+1)/2 * vertical_diff
             b_empty.rotation_euler[2] += radians(2*stepsize)
-            if not DEBUG:
-                with open(scene_output_dir + '/' + 'transforms.json', 'w') as out_file:
-                    json.dump(out_data, out_file, indent=4)
+
+            with open(scene_output_dir + '/' + 'transforms.json', 'w') as out_file:
+                json.dump(out_data, out_file, indent=4)
