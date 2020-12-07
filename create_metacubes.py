@@ -6,8 +6,8 @@ import numpy as np
 import random
 import time
 
-NUM_SCENES = 1
-VIEWS = 30
+NUM_SCENES = 10000
+VIEWS = 50
 RESOLUTION = 128
 RESULTS_PATH = 'data/metacubes_dec6/'
 DEPTH_SCALE = 1.4
@@ -155,12 +155,6 @@ if __name__ == '__main__':
         b_empty.rotation_euler[0] = CIRCLE_FIXED_START[0] + vertical_diff
 
         for i in range(0, VIEWS):
-            if DEBUG:
-                i = np.random.randint(0, VIEWS)
-                b_empty.rotation_euler[0] = CIRCLE_FIXED_START[0] + \
-                    (np.cos(radians(stepsize*i))+1)/2 * vertical_diff
-                b_empty.rotation_euler[2] += radians(2*stepsize*i)
-
             print("Rotation {}, {}".format(
                 (stepsize * i), radians(stepsize * i)))
             scene.render.filepath = scene_output_dir + '/r_' + str(i)

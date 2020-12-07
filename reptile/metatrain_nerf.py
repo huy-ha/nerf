@@ -42,16 +42,17 @@ def train(models, grad_vars,
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
     # TODO weight_decay
-    optimizer = tf.keras.optimizers.Adam(
+
+    def create_optimizer(): return tf.keras.optimizers.Adam(
         inner_learning_rate, beta_1=0)
     train_writer = SummaryWriter(save_dir + '/train')
     test_writer = SummaryWriter(save_dir + '/test')
     global_step = tf.compat.v1.train.get_or_create_global_step()
     global_step.assign(0)
-    for i in tqdm(range(meta_iters),
-                  desc='Reptile on Nerf',
-                  dynamic_ncols=True,
-                  smoothing=0.05):
+    pbar = tqdm(range(meta_iters),
+                dynamic_ncols=True,
+                smoothing=0.05)
+    for i in pbar:
         frac_done = i / meta_iters
         cur_meta_step_size = frac_done * meta_step_size_final + \
             (1 - frac_done) * meta_step_size
@@ -61,7 +62,7 @@ def train(models, grad_vars,
                       N_rand=N_rand,
                       chunk=chunk,
                       grad_vars=grad_vars,
-                      optimizer=optimizer,
+                      create_optimizer=create_optimizer,
                       half_res=half_res,
                       testskip=testskip,
                       white_bkgd=white_bkgd,
@@ -69,6 +70,7 @@ def train(models, grad_vars,
                       meta_step_size=cur_meta_step_size,
                       meta_batch_size=meta_batch_size,
                       render_kwargs_train=render_kwargs_train)
+        pbar.set_description(f'Outer Loss: {float(loss):.02e}')
         train_writer.add_scalar('loss', loss, i)
         train_writer.add_scalar('psnr', psnr, i)
         train_writer.add_histogram('tran', trans, i)
@@ -84,7 +86,7 @@ def train(models, grad_vars,
                     testskip,
                     white_bkgd, log_fn, save_dir, N_rand,
                     inner_iters, chunk, use_viewdirs,
-                    grad_vars, optimizer, render_kwargs_train, render_kwargs_test,
+                    grad_vars, create_optimizer, render_kwargs_train, render_kwargs_test,
                     render_test_set=i % 100 == 0,
                     writer=test_writer)
             for key, value in loss_dict.items():
@@ -103,7 +105,7 @@ def train(models, grad_vars,
             for key in models:
                 path = os.path.join(
                     save_dir, '{}_{:06d}.npy'.format(key, i))
-                np.save(path, models[key].get_weights())
+                models[key].save(path)
                 print('Saved weights at', path)
         if time_deadline is not None and time.time() > time_deadline:
             break

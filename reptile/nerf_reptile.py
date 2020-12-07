@@ -18,6 +18,7 @@ from load_blender import load_blender_data
 import os
 import imageio
 from copy import deepcopy
+from tqdm import tqdm
 tf.compat.v1.enable_eager_execution()
 
 
@@ -31,7 +32,7 @@ def meta_step(models,
               N_rand,
               chunk,
               grad_vars,
-              optimizer,
+              create_optimizer,
               half_res,
               testskip,
               white_bkgd,
@@ -46,10 +47,12 @@ def meta_step(models,
     psnrs = []
     psnr0s = []
     transs = []
-    for (scene_path, images, poses, render_poses, hwf, i_split) in _sample_scene(
-            dataset,  half_res, testskip,
-            white_bkgd, meta_batch_size):
-        # TODO Reset optimizer??
+    pbar = tqdm(_sample_scene(
+        dataset,  half_res, testskip,
+        white_bkgd, meta_batch_size),
+        total=meta_batch_size)
+    for (scene_path, images, poses, render_poses, hwf, i_split) in pbar:
+        optimizer = create_optimizer()
         H, W, focal = hwf
         H, W = int(H), int(W)
         hwf = [H, W, focal]
@@ -73,9 +76,10 @@ def meta_step(models,
                                 grad_vars,
                                 optimizer,
                                 render_kwargs_train)
+            pbar.set_description(f'Inner Loss: {float(loss):.02e}')
             losses.append(loss)
             psnrs.append(psnr)
-            psnr0s.append(psnr0)
+            psnr0s.append(psnr0 if psnr0 is not None else 0.0)
             transs.append(trans)
         new_vars.append({k: deepcopy(v.get_weights())
                          for k, v in models.items()})
@@ -162,7 +166,7 @@ def meta_evaluate(models,
                   N_rand,
                   inner_iters,
                   chunk, use_viewdirs,
-                  grad_vars, optimizer,
+                  grad_vars, create_optimizer,
                   render_kwargs_train,
                   render_kwargs_test,
                   render_test_set=False,
@@ -187,12 +191,12 @@ def meta_evaluate(models,
     test_final_psnrs = []
     test_final_psnr0s = []
     test_final_transs = []
-    for test_scene_i,test_scene_path in enumerate(test_scenes):
+    for test_scene_i, test_scene_path in enumerate(test_scenes):
         if max_eval_scenes is not None and \
-            test_scene_i > max_eval_scenes-1:
+                test_scene_i > max_eval_scenes-1:
             break
         set_variables(models, old_vars)
-        # TODO Reset optimizer??
+        optimizer = create_optimizer()
         scene_id, images, poses, render_poses, hwf, i_split = load_data(
             test_scene_path,
             white_bkgd=white_bkgd,
@@ -354,7 +358,7 @@ def log_qualitative_results(writer,
     imageio.imwrite(os.path.join(
         testimgdir, '{:06d}_{}.png'.format(
             metalearning_iter,
-        scene_id)), to8b(rgb))
+            scene_id)), to8b(rgb))
 
     writer.add_image(
         f'rgb/{scene_id}',
