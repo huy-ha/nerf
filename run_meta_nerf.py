@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument(
         '--replacement', help='sample with replacement', action='store_true')
     parser.add_argument('--learning-rate',
-                        help='Adam step size', default=1e-3, type=float)
+                        help='Inner loop step size', default=1e-3, type=float)
     parser.add_argument(
         '--meta-step', help='meta-training step size', default=0.05, type=float)
     parser.add_argument('--meta-step-final', help='meta-training step size by the end',
@@ -58,6 +58,7 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
+    print(args)
     ckpt_path = os.path.join(args.basedir, args.expname)
     if not os.path.exists(ckpt_path):
         os.mkdir(ckpt_path)

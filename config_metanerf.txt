@@ -1,0 +1,22 @@
+expname = metacubes_nov24_mbs8_ls0-1_iters200_net-depth8
+basedir = ./logs
+datadir = ./metacubes
+dataset_type = blender
+
+half_res = False
+no_batching = True
+
+N_samples = 32
+N_importance = 0
+
+use_viewdirs = True
+
+white_bkgd = True
+
+N_rand = 128
+
+inner-iters = 32
+meta-batch = 2
+meta-iters = 100000
+eval-interval = 50
+learning-rate = 5e-4

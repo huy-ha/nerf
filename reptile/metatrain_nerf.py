@@ -43,8 +43,8 @@ def train(models, grad_vars,
         os.mkdir(save_dir)
     # TODO weight_decay
 
-    def create_optimizer(): return tf.keras.optimizers.Adam(
-        inner_learning_rate, beta_1=0)
+    def create_optimizer(): return tf.keras.optimizers.SGD(
+        inner_learning_rate)
     train_writer = SummaryWriter(save_dir + '/train')
     test_writer = SummaryWriter(save_dir + '/test')
     global_step = tf.compat.v1.train.get_or_create_global_step()
