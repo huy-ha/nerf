@@ -8,6 +8,7 @@ from run_nerf import create_nerf
 from run_nerf import config_parser
 import numpy as np
 import os
+from pprint import pprint
 
 
 def parse_args():
@@ -58,7 +59,7 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
-    print(args)
+    pprint(sorted(vars(args).items(), key=lambda x: x[0]))
     ckpt_path = os.path.join(args.basedir, args.expname)
     if not os.path.exists(ckpt_path):
         os.mkdir(ckpt_path)
@@ -67,7 +68,6 @@ if __name__ == '__main__':
         np.random.seed(args.random_seed)
         tf.compat.v1.set_random_seed(args.random_seed)
     random.seed(args.seed)
-    # TODO seed everything
     train_set, test_set = read_dataset(args.metadatadir)
     print(f'TRAIN: {len(train_set)} | TEST: {len(test_set)}')
 

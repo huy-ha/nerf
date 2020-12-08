@@ -12,7 +12,7 @@ use_viewdirs = True
 
 white_bkgd = True
 
-N_rand = 128
+N_rand = 1024
 
 inner-iters = 512
 meta-batch = 2

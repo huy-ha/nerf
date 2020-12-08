@@ -4,10 +4,7 @@ Training helpers for supervised meta-learning.
 
 import os
 import time
-
-
 import tensorflow as tf
-
 from .nerf_reptile import meta_step, meta_evaluate
 from .variables import weight_decay
 from tqdm import tqdm
@@ -34,7 +31,7 @@ def train(models, grad_vars,
           meta_iters=400000,
           inner_learning_rate=1e-3,
           eval_interval=10,
-          log_qualitative_train=50,
+          log_qualitative_train=1,
           time_deadline=None,
           log_fn=print):
     """
@@ -42,19 +39,11 @@ def train(models, grad_vars,
     """
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
-    bds_dict = {
-        'near': tf.cast(2.0, tf.float32),
-        'far': tf.cast(6.0, tf.float32),
-    }
-    render_kwargs_train.update(bds_dict)
-    render_kwargs_test.update(bds_dict)
 
-    def create_optimizer(): return tf.keras.optimizers.SGD(
+    def create_optimizer(): return tf.keras.optimizers.Adam(
         inner_learning_rate)
     train_writer = SummaryWriter(save_dir + '/train')
     test_writer = SummaryWriter(save_dir + '/test')
-    global_step = tf.compat.v1.train.get_or_create_global_step()
-    global_step.assign(0)
     pbar = tqdm(range(meta_iters),
                 dynamic_ncols=True,
                 smoothing=0.05)
@@ -123,4 +112,3 @@ def train(models, grad_vars,
             break
         train_writer.flush()
         test_writer.flush()
-        global_step.assign_add(1)
