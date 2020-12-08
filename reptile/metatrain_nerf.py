@@ -42,7 +42,12 @@ def train(models, grad_vars,
     """
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
-    # TODO weight_decay
+    bds_dict = {
+        'near': tf.cast(2.0, tf.float32),
+        'far': tf.cast(6.0, tf.float32),
+    }
+    render_kwargs_train.update(bds_dict)
+    render_kwargs_test.update(bds_dict)
 
     def create_optimizer(): return tf.keras.optimizers.SGD(
         inner_learning_rate)
