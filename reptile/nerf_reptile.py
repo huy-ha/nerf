@@ -278,8 +278,7 @@ def meta_evaluate(models,
             batch = tf.transpose(batch, [1, 0, 2])
             batch_rays, target_s = batch[:2], batch[2]
             if i_batch >= rays_rgb.shape[0]:
-                np.random.shuffle(rays_rgb)
-                i_batch = 0
+                break
             i_batch += N_rand
             loss, psnr, psnr0, trans = \
                 get_losses(batch_rays, target_s, chunk, H,
