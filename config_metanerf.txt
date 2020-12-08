@@ -4,7 +4,6 @@ datadir = ./metacubes
 dataset_type = blender
 
 half_res = False
-no_batching = True
 
 N_samples = 32
 N_importance = 0
@@ -15,7 +14,7 @@ white_bkgd = True
 
 N_rand = 128
 
-inner-iters = 32
+inner-iters = 512
 meta-batch = 2
 meta-iters = 100000
 eval-interval = 100

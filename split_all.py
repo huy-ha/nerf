@@ -6,10 +6,12 @@ from os import mkdir, symlink, rmdir
 from random import shuffle
 import shutil
 
+
 def mkdir_new(path):
     if exists(path):
         shutil.rmtree(path)
     mkdir(path)
+
 
 if __name__ == '__main__':
     for dir_path in list(str(path) for path in Path('./.').glob("*")):
@@ -23,7 +25,7 @@ if __name__ == '__main__':
         print(f'found {n} images')
         shuffle(transforms['frames'])
         train_frames, val_frames = np.split(
-            transforms['frames'], [int(.8 * n)])
+            transforms['frames'], [int(.9 * n)])
         test_frames = val_frames
         val_transforms = {
             'camera_angle_x': transforms['camera_angle_x'],
@@ -42,12 +44,14 @@ if __name__ == '__main__':
 
         mkdir_new(f'{dir_path}/test')
         for frame in test_transforms['frames']:
-            output = f'{dir_path}/test/' + basename(frame['file_path']) + '.png'
+            output = f'{dir_path}/test/' + \
+                basename(frame['file_path']) + '.png'
             symlink(frame['file_path']+'.png', output)
 
         mkdir_new(f'{dir_path}/train')
         for frame in train_transforms['frames']:
-            output = f'{dir_path}/train/' + basename(frame['file_path']) + '.png'
+            output = f'{dir_path}/train/' + \
+                basename(frame['file_path']) + '.png'
             symlink(frame['file_path']+'.png', output)
 
         mkdir_new(f'{dir_path}/val')
@@ -55,7 +59,8 @@ if __name__ == '__main__':
             output = f'{dir_path}/val/' + basename(frame['file_path']) + '.png'
             symlink(frame['file_path']+'.png', output)
 
-
-        json.dump(train_transforms, open(f'{dir_path}/transforms_train.json', 'w'))
-        json.dump(test_transforms, open(f'{dir_path}/transforms_test.json', 'w'))
+        json.dump(train_transforms, open(
+            f'{dir_path}/transforms_train.json', 'w'))
+        json.dump(test_transforms, open(
+            f'{dir_path}/transforms_test.json', 'w'))
         json.dump(val_transforms, open(f'{dir_path}/transforms_val.json', 'w'))

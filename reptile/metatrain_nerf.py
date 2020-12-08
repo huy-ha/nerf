@@ -34,6 +34,7 @@ def train(models, grad_vars,
           meta_iters=400000,
           inner_learning_rate=1e-3,
           eval_interval=10,
+          log_qualitative_train=50,
           time_deadline=None,
           log_fn=print):
     """
@@ -69,7 +70,13 @@ def train(models, grad_vars,
                       inner_iters=inner_iters,
                       meta_step_size=cur_meta_step_size,
                       meta_batch_size=meta_batch_size,
-                      render_kwargs_train=render_kwargs_train)
+                      render_kwargs_train=render_kwargs_train,
+                      metalearning_iter=i,
+                      N_importance=N_importance,
+                      use_viewdirs=use_viewdirs,
+                      writer=train_writer,
+                      save_dir=save_dir,
+                      log_qualitative=i % log_qualitative_train == 0)
         pbar.set_description(f'Outer Loss: {float(loss):.02e}')
         train_writer.add_scalar('loss', loss, i)
         train_writer.add_scalar('psnr', psnr, i)

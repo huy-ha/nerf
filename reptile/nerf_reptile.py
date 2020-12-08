@@ -39,7 +39,13 @@ def meta_step(models,
               inner_iters,
               meta_step_size,
               meta_batch_size,
-              render_kwargs_train):
+              render_kwargs_train,
+              metalearning_iter,
+              N_importance,
+              use_viewdirs,
+              writer,
+              save_dir,
+              log_qualitative=False):
     old_vars = {k: deepcopy(v.get_weights())
                 for k, v in models.items()}
     new_vars = []
@@ -47,9 +53,9 @@ def meta_step(models,
     psnrs = []
     psnr0s = []
     transs = []
-    for (scene_path, images, poses, render_poses, hwf, i_split) in  _sample_scene(
+    for scene_id, (scene_path, images, poses, render_poses, hwf, i_split) in enumerate(_sample_scene(
             dataset,  half_res, testskip,
-            white_bkgd, meta_batch_size):
+            white_bkgd, meta_batch_size)):
         optimizer = create_optimizer()
         H, W, focal = hwf
         H, W = int(H), int(W)
@@ -80,6 +86,20 @@ def meta_step(models,
             transs.append(trans)
         new_vars.append({k: deepcopy(v.get_weights())
                          for k, v in models.items()})
+        if log_qualitative:
+            log_qualitative_results(
+                writer,
+                metalearning_iter,
+                f'{scene_id:04d}',
+                save_dir,
+                render_poses, poses,
+                i_test,
+                hwf, chunk,
+                render_kwargs_train,
+                images, N_importance,
+                use_viewdirs,
+                render_test_set=False
+            )
         set_variables(models, old_vars)
     new_vars = {k: average_vars([
         variables[k]
@@ -291,7 +311,7 @@ def meta_evaluate(models,
         log_fn(f'[Eval Scene #{scene_id}] ({metalearning_iter} | ' +
                f'loss: {scene_losses:.5f} | PSNR: {scene_psnrs:.2f} )')
         log_qualitative_results(writer, metalearning_iter, scene_id, save_dir,
-                                render_poses, poses, i_split, hwf, chunk,
+                                render_poses, poses, i_test, hwf, chunk,
                                 render_kwargs_test, images, N_importance,
                                 use_viewdirs, render_test_set)
 
@@ -333,16 +353,15 @@ def log_qualitative_results(writer,
                             use_viewdirs=True,
                             render_test_set=False):
     H, W, focal = hwf
-    i_train, i_val, i_test = i_split
     testsavedir = os.path.join(
         save_dir, 'testset_iter/{:06d}/scene{}'.format(
             metalearning_iter, scene_id))
     os.makedirs(testsavedir, exist_ok=True)
-    render_path(poses[i_test], hwf, chunk, render_kwargs_test,
-                gt_imgs=images[i_test], savedir=testsavedir)
+    render_path(poses[i_split], hwf, chunk, render_kwargs_test,
+                gt_imgs=images[i_split], savedir=testsavedir)
 
     # Log a rendered validation view to Tensorboard
-    img_i = np.random.choice(i_val)
+    img_i = np.random.choice(i_split)
     target = images[img_i]
     pose = poses[img_i, :3, :4]
 
