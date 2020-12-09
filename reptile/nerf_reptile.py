@@ -11,7 +11,7 @@ import random
 import numpy as np
 from run_nerf_helpers import (
     img2mse, mse2psnr, get_rays_np,
-    to8b, render, render_path,
+    to8b, render, render_path, render_timesteps,
     create_ray_batches, load_data)
 from load_blender import load_blender_data
 import os
@@ -52,7 +52,7 @@ def meta_step(models,
     psnrs = []
     psnr0s = []
     transs = []
-    for scene_id, (scene_path, images, poses, render_poses, hwf, i_split) in enumerate(_sample_scene(
+    for scene_id, (scene_path, images, poses, render_poses, hwf, i_split, timesteps) in enumerate(_sample_scene(
             dataset,  half_res, testskip,
             white_bkgd, meta_batch_size)):
         optimizer = create_optimizer()
@@ -63,12 +63,26 @@ def meta_step(models,
         i_batch = 0
         rays_rgb = create_ray_batches(
             H, W, focal, poses, images, i_train)
+        train_timesteps = []
+        for i in i_train:
+            train_timesteps.extend([timesteps[i]] * H * W)
+        train_timesteps = np.asarray(train_timesteps)
+
+        idxs = np.random.permutation(rays_rgb.shape[0])
+        rays_rgb = rays_rgb[idxs]
+        train_timesteps = train_timesteps[idxs]
+
+
         for batch_idx, batch in enumerate(range(inner_iters)):
             batch = rays_rgb[i_batch:i_batch+N_rand]  # [B, 2+1, 3*?]
+            batch_timestep = train_timesteps[i_batch: i_batch + N_rand]
             batch = tf.transpose(batch, [1, 0, 2])
             batch_rays, target_s = batch[:2], batch[2]
             if i_batch >= rays_rgb.shape[0]:
-                np.random.shuffle(rays_rgb)
+                # np.random.shuffle(rays_rgb)
+                idxs = np.random.permutation(rays_rgb.shape[0])
+                rays_rgb = rays_rgb[idxs]
+                train_timesteps = train_timesteps[idxs]
                 i_batch = 0
             i_batch += N_rand
             loss, psnr, psnr0, trans = \
@@ -78,6 +92,7 @@ def meta_step(models,
                                 H, W, focal,
                                 grad_vars,
                                 optimizer,
+                                batch_timestep,
                                 render_kwargs_train)
             step = metalearning_iter * meta_batch_size * inner_iters +\
                 inner_iters * scene_id + batch_idx
@@ -101,7 +116,7 @@ def meta_step(models,
                 hwf, chunk,
                 render_kwargs_train,
                 images, N_importance,
-                use_viewdirs,
+                timesteps, use_viewdirs,
                 render_test_set=False)
         set_variables(models, old_vars)
     new_vars = {k: average_vars([
@@ -119,10 +134,12 @@ def get_losses(batch_rays,
                target_s,
                chunk,
                H, W, focal,
+               batch_timestep,
                render_kwargs_train):
     # Make predictions for color, disparity, accumulated opacity.
     rgb, disp, acc, extras = render(
         H, W, focal,
+        batch_timestep,
         chunk=chunk,
         rays=batch_rays,
         verbose=True,
@@ -151,11 +168,12 @@ def train_innerstep(batch_rays,
                     H, W, focal,
                     grad_vars,
                     optimizer,
+                    batch_timestep,
                     render_kwargs_train):
     with tf.GradientTape() as tape:
         loss, psnr, psnr0, trans = \
             get_losses(batch_rays, target_s, chunk, H,
-                       W, focal, render_kwargs_train)
+                       W, focal, batch_timestep, render_kwargs_train)
 
     gradients = tape.gradient(loss, grad_vars)
     optimizer.apply_gradients(zip(gradients, grad_vars))
@@ -205,7 +223,7 @@ def meta_evaluate(models,
             break
         set_variables(models, old_vars)
         optimizer = create_optimizer()
-        scene_id, images, poses, render_poses, hwf, i_split = load_data(
+        scene_id, images, poses, render_poses, hwf, i_split, timesteps = load_data(
             test_scene_path,
             white_bkgd=white_bkgd,
             half_res=half_res,
@@ -232,7 +250,7 @@ def meta_evaluate(models,
             i_batch += N_rand
             loss, psnr, psnr0, trans = train_innerstep(
                 batch_rays, target_s, chunk, H, W, focal,
-                grad_vars, optimizer, render_kwargs_train)
+                grad_vars, optimizer, batch_timestep, render_kwargs_train)
             if psnr0 is None:
                 psnr0 = 0.0
             scene_losses.append(loss)
@@ -260,6 +278,17 @@ def meta_evaluate(models,
         i_batch = 0
         rays_rgb = create_ray_batches(
             H, W, focal, poses, images, i_val)
+
+        val_timesteps = []
+        for i in i_val:
+            val_timesteps.extend([timesteps[i]] * H * W)
+        val_timesteps = np.asarray(val_timesteps)
+
+        idxs = np.random.permutation(rays_rgb.shape[0])
+        rays_rgb = rays_rgb[idxs]
+        val_timesteps = val_timesteps[idxs]
+
+
         scene_losses = []
         scene_psnrs = []
         scene_psnr0s = []
@@ -267,14 +296,18 @@ def meta_evaluate(models,
         for batch_inner_iter in range(inner_iters):
             batch = rays_rgb[i_batch:i_batch+N_rand]  # [B, 2+1, 3*?]
             batch = tf.transpose(batch, [1, 0, 2])
+            batch_timestep = val_timesteps[i_batch: i_batch + N_rand]
             batch_rays, target_s = batch[:2], batch[2]
             if i_batch >= rays_rgb.shape[0]:
-                np.random.shuffle(rays_rgb)
+                idxs = np.random.permutation(rays_rgb.shape[0])
+                rays_rgb = rays_rgb[idxs]
+                train_timesteps = train_timesteps[idxs]
+                # np.random.shuffle(rays_rgb)
                 i_batch = 0
             i_batch += N_rand
             loss, psnr, psnr0, trans = \
                 get_losses(batch_rays, target_s, chunk, H,
-                           W, focal, render_kwargs_train)
+                           W, focal, batch_timestep, render_kwargs_train)
             if psnr0 is None:
                 psnr0 = 0.0
             scene_losses.append(loss)
@@ -304,7 +337,7 @@ def meta_evaluate(models,
         log_qualitative_results(writer, metalearning_iter, scene_id, save_dir,
                                 render_poses, poses, i_test, hwf, chunk,
                                 render_kwargs_test, images, N_importance,
-                                use_viewdirs, render_test_set)
+                                timesteps, use_viewdirs, render_test_set)
 
     set_variables(models, old_vars)
     return {
@@ -341,6 +374,7 @@ def log_qualitative_results(writer,
                             render_kwargs_test,
                             images,
                             N_importance,
+                            timesteps,
                             use_viewdirs=True,
                             render_test_set=False):
     H, W, focal = hwf
@@ -348,16 +382,21 @@ def log_qualitative_results(writer,
         save_dir, 'testset_iter/{:06d}/scene{}'.format(
             metalearning_iter, scene_id))
     os.makedirs(testsavedir, exist_ok=True)
-    render_path(poses[i_split], hwf, chunk, render_kwargs_test,
-                gt_imgs=images[i_split], savedir=testsavedir)
+    split_timesteps = []
+    for i in i_split:
+        split_timesteps.extend([timesteps[i]] * H * W)
+    split_timesteps = np.asarray(split_timesteps)
 
+    render_path(poses[i_split], hwf, split_timesteps, chunk, render_kwargs_test,
+                gt_imgs=images[i_split], savedir=testsavedir)
     # Log a rendered validation view to Tensorboard
     img_i = np.random.choice(i_split)
     target = images[img_i]
     pose = poses[img_i, :3, :4]
+    split_timestep = [timesteps[img_i]] * (H*W)
 
     rgb, disp, acc, extras = render(
-        H, W, focal, chunk=chunk, c2w=pose, **render_kwargs_test)
+        H, W, focal, split_timestep, chunk=chunk, c2w=pose, **render_kwargs_test)
 
     psnr = mse2psnr(img2mse(rgb, target))
 
@@ -412,10 +451,11 @@ def log_qualitative_results(writer,
 
     # Save videos
     if render_test_set:
-        rgbs, disps = render_path(
-            render_poses, hwf, chunk, render_kwargs_test)
+        sorted_timesteps = sorted(list(set(timesteps)))
+        rgbs, disps = render_timesteps(
+            poses[i_split[0]], hwf, sorted_timesteps, chunk, render_kwargs_test, savedir=testsavedir)
         moviebase = os.path.join(
-            save_dir, '{}_spiral_{:06d}_'.format(
+            save_dir, '{}_temporal_{:06d}_'.format(
                 scene_id,
                 metalearning_iter))
         imageio.mimwrite(moviebase + 'rgb.mp4',
@@ -426,7 +466,7 @@ def log_qualitative_results(writer,
         if use_viewdirs:
             render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
             rgbs_still, _ = render_path(
-                render_poses, hwf, chunk,
+                render_poses, hwf, sorted_timesteps, chunk,
                 render_kwargs_test)
             render_kwargs_test['c2w_staticcam'] = None
             imageio.mimwrite(moviebase + 'rgb_still.mp4',

@@ -87,7 +87,7 @@ def batchify(fn, chunk):
     return ret
 
 
-def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
+def run_network(inputs, viewdirs, timestep, fn, embed_fn, embeddirs_fn, time_embed_fn, netchunk=1024*64):
     """Prepares inputs and applies network 'fn'."""
 
     inputs_flat = tf.reshape(inputs, [-1, inputs.shape[-1]])
@@ -97,7 +97,13 @@ def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
         input_dirs = tf.broadcast_to(viewdirs[:, None], inputs.shape)
         input_dirs_flat = tf.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
-        embedded = tf.concat([embedded, embedded_dirs], -1)
+        # embedded = tf.concat([embedded, embedded_dirs], -1)
+        timestep_broadcast = tf.constant(timestep, dtype=tf.float32)  # 1024
+        timestep_broadcast = tf.broadcast_to(timestep_broadcast[:, None, None], inputs.shape)
+        timestep_broadcast = tf.reshape(timestep_broadcast, [-1, timestep_broadcast.shape[-1]])  # 65536 x 27
+        embedded_time = time_embed_fn(timestep_broadcast)  # 65536 x 9
+        # timestep_broadcast = tf.broadcast_to(timestep_broadcast, shape=(embedded.shape[0],1))
+        embedded = tf.concat([embedded, embedded_dirs, embedded_time], -1)  # 65536 x 99
 
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = tf.reshape(outputs_flat, list(
@@ -109,7 +115,7 @@ def config_parser():
 
     import configargparse
     parser = configargparse.ArgumentParser()
-    parser.add_argument('--config', is_config_file=True,
+    parser.add_argument('--config', is_config_file=True, default="config_monkey.txt",
                         help='config file path')
     parser.add_argument("--expname", type=str, help='experiment name')
     parser.add_argument("--basedir", type=str, default='./logs/',
@@ -164,6 +170,8 @@ def config_parser():
                         help='set 0 for default positional encoding, -1 for none')
     parser.add_argument("--multires", type=int, default=10,
                         help='log2 of max freq for positional encoding (3D location)')
+    parser.add_argument("--temporal_enc", type=int, default=4,
+                        help='log2 of max freq for temporal encoding (timestep)')
     parser.add_argument("--multires_views", type=int, default=4,
                         help='log2 of max freq for positional encoding (2D direction)')
     parser.add_argument("--raw_noise_std", type=float, default=0.,
@@ -221,7 +229,7 @@ def config_parser():
 
 # Model architecture
 
-def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, skips=[4], use_viewdirs=False):
+def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, input_t=1, output_ch=4, skips=[4], use_viewdirs=False):
 
     relu = tf.keras.activations.relu
     def dense(W, act=relu): return tf.keras.layers.Dense(W, activation=act)
@@ -231,13 +239,18 @@ def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, skips
     input_ch = int(input_ch)
     input_ch_views = int(input_ch_views)
 
-    inputs = tf.keras.Input(shape=(input_ch + input_ch_views))
-    inputs_pts, inputs_views = tf.split(inputs, [input_ch, input_ch_views], -1)
-    inputs_pts.set_shape([None, input_ch])
-    inputs_views.set_shape([None, input_ch_views])
+    inputs = tf.keras.Input(shape=(input_ch + input_ch_views + input_t))
+    print("input_ch + input_ch_views + input_t", input_ch + input_ch_views + input_t)
+    inputs_pts, inputs_views, input_timestep = tf.split(inputs, [input_ch, input_ch_views, input_t], -1)
+    # inputs_pts, inputs_views = tf.split(inputs, [input_ch, input_ch_views], -1)
+    inputs_pts.set_shape([None, input_ch])  # (?, 63)
+    inputs_views.set_shape([None, input_ch_views])  # (?, 27)
+    input_timestep.set_shape([None, input_t])  # (?, 27)
 
-    print(inputs.shape, inputs_pts.shape, inputs_views.shape)
-    outputs = inputs_pts
+    # print("inputs {}, inputs_pts {}, inputs_views {}, input_timestep {}".format(inputs.shape, inputs_pts.shape,
+    #                                                                             inputs_views.shape,
+    #                                                                             input_timestep.shape))
+    outputs = tf.concat([inputs_pts, input_timestep], -1)  # (?, 90) # inputs_pts
     for i in range(D):
         outputs = dense(W)(outputs)
         if i in skips:
@@ -356,6 +369,7 @@ def sample_pdf(bins, weights, N_samples, det=False):
 
 
 def render_rays(ray_batch,
+                timestep_embed,
                 network_fn,
                 network_query_fn,
                 N_samples,
@@ -513,7 +527,7 @@ def render_rays(ray_batch,
         z_vals[..., :, None]  # [N_rays, N_samples, 3]
 
     # Evaluate model at each point.
-    raw = network_query_fn(pts, viewdirs, network_fn)  # [N_rays, N_samples, 4]
+    raw = network_query_fn(pts, viewdirs, timestep_embed, network_fn)
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(
         raw, z_vals, rays_d)
 
@@ -534,7 +548,7 @@ def render_rays(ray_batch,
 
         # Make predictions with network_fine.
         run_fn = network_fn if network_fine is None else network_fine
-        raw = network_query_fn(pts, viewdirs, run_fn)
+        raw = network_query_fn(pts, viewdirs, timestep_embed, run_fn)
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(
             raw, z_vals, rays_d)
 
@@ -553,11 +567,11 @@ def render_rays(ray_batch,
     return ret
 
 
-def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
+def batchify_rays(rays_flat, timestep_embed, chunk=1024*32, **kwargs):
     """Render rays in smaller minibatches to avoid OOM."""
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
-        ret = render_rays(rays_flat[i:i+chunk], **kwargs)
+        ret = render_rays(rays_flat[i:i+chunk], timestep_embed[i:i+chunk], **kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -576,11 +590,11 @@ def create_ray_batches(H, W, focal, poses, images, i_split):
                          for i in i_split], axis=0)
     rays_rgb = np.reshape(rays_rgb, [-1, 3, 3])
     rays_rgb = rays_rgb.astype(np.float32)
-    np.random.shuffle(rays_rgb)
+    # np.random.shuffle(rays_rgb)
     return rays_rgb
 
 
-def render(H, W, focal,
+def render(H, W, focal, timestep_embed,
            chunk=1024*32, rays=None, c2w=None, ndc=True,
            near=0., far=1.,
            use_viewdirs=False, c2w_staticcam=None,
@@ -591,6 +605,7 @@ def render(H, W, focal,
       H: int. Height of image in pixels.
       W: int. Width of image in pixels.
       focal: float. Focal length of pinhole camera.
+      timestep_embed: int.
       chunk: int. Maximum number of rays to process simultaneously. Used to
         control maximum memory usage. Does not affect final results.
       rays: array of shape [2, batch_size, 3]. Ray origin and direction for
@@ -648,7 +663,7 @@ def render(H, W, focal,
         rays = tf.concat([rays, viewdirs], axis=-1)
 
     # Render and reshape
-    all_ret = batchify_rays(rays, chunk, **kwargs)
+    all_ret = batchify_rays(rays, timestep_embed, chunk, **kwargs)
     for k in all_ret:
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = tf.reshape(all_ret[k], k_sh)
@@ -660,17 +675,62 @@ def render(H, W, focal,
 
 
 def load_data(scene_dir_path, white_bkgd, half_res, testskip):
-    images, poses, render_poses, hwf, i_split = load_blender_data(
+    images, poses, render_poses, hwf, i_split, timesteps = load_blender_data(
         scene_dir_path, half_res, testskip)
 
     if white_bkgd:
         images = images[..., :3]*images[..., -1:] + (1.-images[..., -1:])
     else:
         images = images[..., :3]
-    return os.path.basename(scene_dir_path), images, poses, render_poses, hwf, i_split
+    return os.path.basename(scene_dir_path), images, poses, render_poses, hwf, i_split, timesteps
 
+def render_timesteps(c2w, hwf, sorted_timesteps, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
+    """
+    Render temporal dimension
 
-def render_path(render_poses, hwf, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0, log=False):
+    :param c2w:
+    :param hwf:
+    :param sorted_timesteps:
+    :param chunk:
+    :param render_kwargs:
+    :param gt_imgs:
+    :param savedir:
+    :param render_factor:
+    :return:
+    """
+    H, W, focal = hwf
+
+    if render_factor != 0:
+        # Render downsampled for speed
+        H = H//render_factor
+        W = W//render_factor
+        focal = focal/render_factor
+
+    rgbs = []
+    disps = []
+    for i, input_timestep in enumerate(sorted_timesteps):
+        rgb, disp, acc, _ = render(
+            H, W, focal, [input_timestep] * H * W, chunk=chunk, c2w=c2w[:3, :4], **render_kwargs)
+        rgbs.append(rgb.numpy())
+        disps.append(disp.numpy())
+        if i == 0:
+            print(rgb.shape, disp.shape)
+
+        if gt_imgs is not None and render_factor == 0:
+            p = -10. * np.log10(np.mean(np.square(rgb - gt_imgs[i])))
+            print(p)
+
+        if savedir is not None:
+            rgb8 = to8b(rgbs[-1])
+            filename = os.path.join(savedir, '{:03d}.png'.format(i))
+            print("filename", filename)
+            imageio.imwrite(filename, rgb8)
+    rgbs = np.stack(rgbs, 0)
+    disps = np.stack(disps, 0)
+
+    return rgbs, disps
+
+def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0, log=False):
 
     H, W, focal = hwf
 
@@ -693,7 +753,7 @@ def render_path(render_poses, hwf, chunk, render_kwargs, gt_imgs=None, savedir=N
 
     for i, c2w in enum:
         rgb, disp, acc, _ = render(
-            H, W, focal, chunk=chunk, c2w=c2w[:3, :4], **render_kwargs)
+            H, W, focal, timestep_embed, chunk=chunk, c2w=c2w[:3, :4], **render_kwargs)
         rgbs.append(rgb.numpy())
         disps.append(disp.numpy())
 
@@ -723,12 +783,15 @@ def create_nerf(args):
     if args.use_viewdirs:
         embeddirs_fn, input_ch_views = get_embedder(
             args.multires_views, args.i_embed)
+    # high frequency encoding for time
+    time_embed_fn, input_t = get_embedder(args.temporal_enc, args.i_embed)
+
     output_ch = 4
     skips = [4]
     model = init_nerf_model(
         D=args.netdepth, W=args.netwidth,
         input_ch=input_ch, output_ch=output_ch, skips=skips,
-        input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs)
+        input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=input_t)
     grad_vars = model.trainable_variables
     models = {'model': model}
 
@@ -737,15 +800,18 @@ def create_nerf(args):
         model_fine = init_nerf_model(
             D=args.netdepth_fine, W=args.netwidth_fine,
             input_ch=input_ch, output_ch=output_ch, skips=skips,
-            input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs)
+            input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=input_t)
         grad_vars += model_fine.trainable_variables
         models['model_fine'] = model_fine
 
-    def network_query_fn(inputs, viewdirs, network_fn): return run_network(
-        inputs, viewdirs, network_fn,
-        embed_fn=embed_fn,
-        embeddirs_fn=embeddirs_fn,
-        netchunk=args.netchunk)
+
+    def network_query_fn(inputs, viewdirs, timestep_embed, network_fn):
+        return run_network(
+            inputs, viewdirs, timestep_embed, network_fn,
+            embed_fn=embed_fn,
+            embeddirs_fn=embeddirs_fn,
+            time_embed_fn=time_embed_fn,
+            netchunk=args.netchunk)
 
     render_kwargs_train = {
         'network_query_fn': network_query_fn,
@@ -803,7 +869,8 @@ def create_nerf(args):
     return render_kwargs_train, render_kwargs_test, start, grad_vars, models
 
 
-def render_only(args, i_test, basedir, expname, start, render_poses, hwf, render_kwargs_test):
+def render_only(args, i_test, basedir, expname, start, render_poses, hwf, images, timesteps, render_kwargs_test):
+    H, W, focal = hwf
     if args.render_test:
         # render_test switches to test poses
         images = images[i_test]
@@ -815,8 +882,12 @@ def render_only(args, i_test, basedir, expname, start, render_poses, hwf, render
         'test' if args.render_test else 'path', start))
     os.makedirs(testsavedir, exist_ok=True)
     print('test poses shape', render_poses.shape)
+    test_timesteps = []
+    for i in i_test:
+        test_timesteps.extend([timesteps[i]] * H * W)
+    test_timesteps = np.asarray(test_timesteps)
 
-    rgbs, _ = render_path(render_poses, hwf, args.chunk, render_kwargs_test,
+    rgbs, _ = render_path(render_poses, hwf, test_timesteps, args.chunk, render_kwargs_test,
                           gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
     print('Done rendering', testsavedir)
     imageio.mimwrite(os.path.join(testsavedir, 'video.mp4'),
