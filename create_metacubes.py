@@ -6,10 +6,10 @@ import numpy as np
 import random
 import time
 
-NUM_SCENES = 10000
-VIEWS = 50
-RESOLUTION = 128
-RESULTS_PATH = 'data/metacubes_dec6/'
+NUM_SCENES = 6
+VIEWS = 250
+RESOLUTION = 800
+RESULTS_PATH = 'data/metacubes_dec8_800/'
 DEPTH_SCALE = 1.4
 COLOR_DEPTH = 8
 FORMAT = 'PNG'
@@ -21,6 +21,7 @@ PI = np.pi
 scene = bpy.data.scenes[0]
 for scene in bpy.data.scenes:
     scene.render.threads_mode = 'FIXED'
+    scene.render.threads = 16
     scene.render.image_settings.compression = 95
 
 
