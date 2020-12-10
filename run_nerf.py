@@ -197,10 +197,10 @@ if __name__ == '__main__':
                     imageio.imwrite(os.path.join(
                         testimgdir, '{:06d}.png'.format(i)), to8b(rgb))
                     train_writer.add_scalar('psnr_holdout', psnr.numpy(), i)
-                    train_writer.add_image('rgb', to8b(rgb)[tf.newaxis].numpy(), i)
-                    train_writer.add_image('disp', disp[tf.newaxis, ..., tf.newaxis].numpy(), i)
-                    train_writer.add_image('acc', acc[tf.newaxis, ..., tf.newaxis].numpy(), i)
-                    train_writer.add_image('rgb_holdout', target[tf.newaxis].numpy(), i)
+                    train_writer.add_image('rgb', to8b(rgb)[tf.newaxis], i)
+                    train_writer.add_image('disp', disp[tf.newaxis, ..., tf.newaxis], i)
+                    train_writer.add_image('acc', acc[tf.newaxis, ..., tf.newaxis], i)
+                    train_writer.add_image('rgb_holdout', target[tf.newaxis], i)
                     # with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
 
                     # tf.contrib.summary.image('rgb', to8b(rgb)[tf.newaxis])
