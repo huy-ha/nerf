@@ -859,6 +859,7 @@ def create_nerf(args):
     else:
         ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if
                  ('model_' in f and 'fine' not in f and 'optimizer' not in f)]
+    ckpts = ['/home/sujipark/nerf/debug/model_000050.npy'] # TODO hardcode
     print('Found ckpts')
     pprint(ckpts)
     if len(ckpts) > 0 and not args.no_reload:
