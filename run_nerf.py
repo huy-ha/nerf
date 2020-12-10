@@ -127,13 +127,16 @@ if __name__ == '__main__':
                 for k in models:
                     save_weights(models[k], k, i)
 
-            if i % args.i_video == 0 and i > 0:
+            if i % args.i_video == 0:# and i > 0:
                 sorted_timesteps = sorted(list(set(timesteps)))
+                unseen_timesteps = [1, 35]
+                unseen_pose = np.load("/home/sujipark/nerf/debug/277/view_to_remove.npy")
                 set_pose = poses[i_test[0]]
+                # render at unseen view
                 rgbs, disps = render_timesteps(
-                    set_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test)
+                    unseen_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test)
                 moviebase = os.path.join(
-                    basedir, expname,  '{}_temporal_{:06d}_'.format(expname, i))
+                    basedir, expname,  '{}_temporal_{:06d}_unseen_view'.format(expname, i))
                 imageio.mimwrite(moviebase + 'rgb.mp4',
                                  to8b(rgbs), fps=30, quality=8)
                 imageio.mimwrite(moviebase + 'disp.mp4',
@@ -142,11 +145,30 @@ if __name__ == '__main__':
                 if args.use_viewdirs:
                     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
                     rgbs_still, _ = render_timesteps(
-                        set_pose, hwf, sorted_timesteps, args.chunk,
+                        unseen_pose, hwf, sorted_timesteps, args.chunk,
                         render_kwargs_test)
                     render_kwargs_test['c2w_staticcam'] = None
                     imageio.mimwrite(moviebase + 'rgb_still.mp4',
                                      to8b(rgbs_still), fps=30, quality=8)
+                # render at unseen timestep
+                for t in unseen_timesteps:
+                    rgbs, disps = render_path(
+                        set_pose, hwf, [t] * (H* W), args.chunk, render_kwargs_test)
+                    moviebase = os.path.join(
+                        basedir, expname, '{}_spiral_{:06d}_unseen_timestep'.format(expname, i))
+                    imageio.mimwrite(moviebase + 'rgb.mp4',
+                                     to8b(rgbs), fps=30, quality=8)
+                    imageio.mimwrite(moviebase + 'disp.mp4',
+                                     to8b(disps / np.max(disps)), fps=30, quality=8)
+
+                    if args.use_viewdirs:
+                        render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
+                        rgbs_still, _ = render_path(
+                            set_pose, hwf, [t] * (H * W), args.chunk,
+                            render_kwargs_test)
+                        render_kwargs_test['c2w_staticcam'] = None
+                        imageio.mimwrite(moviebase + 'rgb_still.mp4',
+                                         to8b(rgbs_still), fps=30, quality=8)
 
             if i % args.i_testset == 0 and i > 0:
                 testsavedir = os.path.join(
@@ -171,12 +193,6 @@ if __name__ == '__main__':
                 if args.N_importance > 0:
                     train_writer.add_scalar('psnr0', psnr0.numpy(), i)
 
-                # with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_print):
-                # tf.contrib.summary.scalar('loss', loss)
-                # tf.contrib.summary.scalar('psnr', psnr)
-                # tf.contrib.summary.histogram('tran', trans)
-                # if args.N_importance > 0:
-                #     tf.contrib.summary.scalar('psnr0', psnr0)
 
                 if i % args.i_img == 0:
 
@@ -201,28 +217,12 @@ if __name__ == '__main__':
                     train_writer.add_image('disp', np.squeeze(disp[tf.newaxis, ..., tf.newaxis], axis=0), i, dataformats='HWC')
                     train_writer.add_image('acc', np.squeeze(acc[tf.newaxis, ..., tf.newaxis], axis=0), i, dataformats='HWC')
                     train_writer.add_image('rgb_holdout', np.squeeze(target[tf.newaxis], axis=0), i, dataformats='HWC')
-                    # with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
 
-                    # tf.contrib.summary.image('rgb', to8b(rgb)[tf.newaxis])
-                    # tf.contrib.summary.image(
-                    #     'disp', disp[tf.newaxis, ..., tf.newaxis])
-                    # tf.contrib.summary.image(
-                    #     'acc', acc[tf.newaxis, ..., tf.newaxis])
-                    #
-                    # tf.contrib.summary.scalar('psnr_holdout', psnr)
-                    # tf.contrib.summary.image(
-                    #     'rgb_holdout', target[tf.newaxis])
 
                     if args.N_importance > 0:
                         train_writer.add_image('rgb0', np.squeeze(to8b(extras['rgb0'])[tf.newaxis], axis=0), i, dataformats='HWC')
                         train_writer.add_image('disp0', np.squeeze(extras['disp0'][tf.newaxis, ..., tf.newaxis], axis=0), i, dataformats='HWC')
                         train_writer.add_image('z_std', np.squeeze(extras['z_std'][tf.newaxis, ..., tf.newaxis], axis=0), i, dataformats='HWC')
-                        # with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
-                        # tf.contrib.summary.image(
-                        #     'rgb0', to8b(extras['rgb0'])[tf.newaxis])
-                        # tf.contrib.summary.image(
-                        #     'disp0', extras['disp0'][tf.newaxis, ..., tf.newaxis])
-                        # tf.contrib.summary.image(
-                        #     'z_std', extras['z_std'][tf.newaxis, ..., tf.newaxis])
+
 
             global_step.assign_add(1)
