@@ -23,30 +23,35 @@ def batchify(fn, chunk):
         return fn
 
     def ret(inputs):
-        return tf.concat([fn(inputs[i:i+chunk]) for i in range(0, inputs.shape[0], chunk)], 0) 
+        return tf.concat([fn(inputs[i:i+chunk]) for i in range(0, inputs.shape[0], chunk)], 0)
     return ret
 
 
 def run_network(inputs, viewdirs, timestep, fn, embed_fn, embeddirs_fn, time_embed_fn, netchunk=1024*64):
     """Prepares inputs and applies network 'fn'."""
 
-    inputs_flat = tf.reshape(inputs, [-1, inputs.shape[-1]]) # 65536 x 3
+    inputs_flat = tf.reshape(inputs, [-1, inputs.shape[-1]])  # 65536 x 3
 
-    embedded = embed_fn(inputs_flat) # 65536 x 63
+    embedded = embed_fn(inputs_flat)  # 65536 x 63
     if viewdirs is not None:
-        input_dirs = tf.broadcast_to(viewdirs[:, None], inputs.shape) # 1024 x 64 x 3
-        input_dirs_flat = tf.reshape(input_dirs, [-1, input_dirs.shape[-1]]) # 65536 x 3
-        embedded_dirs = embeddirs_fn(input_dirs_flat) # 65536 x 27
+        input_dirs = tf.broadcast_to(
+            viewdirs[:, None], inputs.shape)  # 1024 x 64 x 3
+        input_dirs_flat = tf.reshape(
+            input_dirs, [-1, input_dirs.shape[-1]])  # 65536 x 3
+        embedded_dirs = embeddirs_fn(input_dirs_flat)  # 65536 x 27
         # embedded = tf.concat([embedded, embedded_dirs, tf.broadcast_to(timestep_embed, (embedded_dirs.shape[0], timestep_embed.shape[-1]))], -1) # hot encode
 
-        timestep_broadcast = tf.constant(timestep, dtype=tf.float32) # 1024
-        timestep_broadcast = tf.broadcast_to(timestep_broadcast[:, None, None], inputs.shape)
+        timestep_broadcast = tf.constant(timestep, dtype=tf.float32)  # 1024
+        timestep_broadcast = tf.broadcast_to(
+            timestep_broadcast[:, None, None], inputs.shape)
         # timestep_broadcast = tf.broadcast_to(timestep_broadcast[:, None], [inputs.shape[0], inputs.shape[1]]) # 1024 x 64
         # timestep_broadcast = tf.reshape(timestep_broadcast, [-1, 1]) # 65536 x 1
-        timestep_broadcast = tf.reshape(timestep_broadcast, [-1, timestep_broadcast.shape[-1]]) # 65536 x 27
-        embedded_time = time_embed_fn(timestep_broadcast) # 65536 x 9
+        timestep_broadcast = tf.reshape(
+            timestep_broadcast, [-1, timestep_broadcast.shape[-1]])  # 65536 x 27
+        embedded_time = time_embed_fn(timestep_broadcast)  # 65536 x 9
         # timestep_broadcast = tf.broadcast_to(timestep_broadcast, shape=(embedded.shape[0],1))
-        embedded = tf.concat([embedded, embedded_dirs, embedded_time], -1) # 65536 x 99
+        embedded = tf.concat(
+            [embedded, embedded_dirs, embedded_time], -1)  # 65536 x 99
 
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = tf.reshape(outputs_flat, list(
@@ -174,7 +179,7 @@ def render_rays(ray_batch,
 
     ###############################
     # batch size
-    N_rays = ray_batch.shape[0] # 1024
+    N_rays = ray_batch.shape[0]  # 1024
 
     # Extract ray origin, direction.
     rays_o, rays_d = ray_batch[:, 0:3], ray_batch[:, 3:6]  # [N_rays, 3] each
@@ -213,7 +218,8 @@ def render_rays(ray_batch,
         z_vals[..., :, None]  # [N_rays=1024, N_samples=64, 3]
 
     # Evaluate model at each point.
-    raw = network_query_fn(pts, viewdirs, timestep_embed, network_fn)  # [N_rays=1024, N_samples=64, 4] 
+    # [N_rays=1024, N_samples=64, 4]
+    raw = network_query_fn(pts, viewdirs, timestep_embed, network_fn)
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(
         raw, z_vals, rays_d)
 
@@ -257,7 +263,8 @@ def batchify_rays(rays_flat, timestep_embed, chunk=1024*32, **kwargs):
     """Render rays in smaller minibatches to avoid OOM."""
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
-        ret = render_rays(rays_flat[i:i+chunk], timestep_embed[i:i+chunk], **kwargs)
+        ret = render_rays(rays_flat[i:i+chunk],
+                          timestep_embed[i:i+chunk], **kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -336,7 +343,7 @@ def render(H, W, focal, timestep_embed,
         rays = tf.concat([rays, viewdirs], axis=-1)
 
     # Render and reshape
-    all_ret = batchify_rays(rays, timestep_embed, chunk, **kwargs) 
+    all_ret = batchify_rays(rays, timestep_embed, chunk, **kwargs)
     for k in all_ret:
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = tf.reshape(all_ret[k], k_sh)
@@ -380,6 +387,7 @@ def render_timesteps(c2w, hwf, sorted_timesteps, chunk, render_kwargs, gt_imgs=N
 
     return rgbs, disps
 
+
 def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
 
     H, W, focal = hwf
@@ -422,20 +430,20 @@ def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs
 def create_nerf(args):
     """Instantiate NeRF's MLP model."""
 
-    embed_fn, input_ch = get_embedder(args.multires, args.i_embed) #10, 0 3D
+    embed_fn, input_ch = get_embedder(args.multires, args.i_embed)  # 10, 0 3D
 
     input_ch_views = 0
     embeddirs_fn = None
     if args.use_viewdirs:
         embeddirs_fn, input_ch_views = get_embedder(
-            args.multires_views, args.i_embed) # embedding dim 4, 0 2D
+            args.multires_views, args.i_embed)  # embedding dim 4, 0 2D
     # high frequency encoding for time
     time_embed_fn, input_t = get_embedder(args.temporal_enc, args.i_embed)
 
     output_ch = 4
     skips = [4]
 
-    model = init_nerf_model( 
+    model = init_nerf_model(
         D=args.netdepth, W=args.netwidth,
         input_ch=input_ch, output_ch=output_ch, skips=skips,
         input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=input_t)
@@ -444,21 +452,21 @@ def create_nerf(args):
 
     model_fine = None
     if args.N_importance > 0:
-        model_fine = init_nerf_model( 
+        model_fine = init_nerf_model(
             D=args.netdepth_fine, W=args.netwidth_fine,
             input_ch=input_ch, output_ch=output_ch, skips=skips,
             input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=input_t)
         grad_vars += model_fine.trainable_variables
         models['model_fine'] = model_fine
 
-    def network_query_fn(inputs, viewdirs, timestep_embed, network_fn): return run_network( 
+    def network_query_fn(inputs, viewdirs, timestep_embed, network_fn): return run_network(
         inputs, viewdirs, timestep_embed, network_fn,
         embed_fn=embed_fn,
         embeddirs_fn=embeddirs_fn,
         time_embed_fn=time_embed_fn,
         netchunk=args.netchunk)
 
-    render_kwargs_train = { 
+    render_kwargs_train = {
         'network_query_fn': network_query_fn,
         'perturb': args.perturb,
         'N_importance': args.N_importance,
@@ -494,6 +502,7 @@ def create_nerf(args):
     if len(ckpts) > 0 and not args.no_reload:
         ft_weights = ckpts[-1]
         print('Reloading from', ft_weights)
+        # model = tf.keras.models.load_model(ft_weights)
         model.set_weights(np.load(ft_weights, allow_pickle=True))
         start = int(ft_weights[-10:-4]) + 1
         print('Resetting step to', start)
@@ -664,7 +673,7 @@ def train():
         print('NEAR FAR', near, far)
 
     elif args.dataset_type == 'blender':
-        images, poses, render_poses, hwf, i_split, timesteps = load_blender_data( # 826
+        images, poses, render_poses, hwf, i_split, timesteps = load_blender_data(  # 826
             args.datadir, args.half_res, args.testskip)
         print('Loaded blender', images.shape,
               render_poses.shape, hwf, args.datadir, len(timesteps))
@@ -697,7 +706,7 @@ def train():
         return
 
     # Cast intrinsics to right types
-    H, W, focal = hwf # 400 400 555.555
+    H, W, focal = hwf  # 400 400 555.555
     H, W = int(H), int(W)
     hwf = [H, W, focal]
 
@@ -719,7 +728,7 @@ def train():
             file.write(open(args.config, 'r').read())
 
     # Create nerf model
-    render_kwargs_train, render_kwargs_test, start, grad_vars, models = create_nerf( 
+    render_kwargs_train, render_kwargs_test, start, grad_vars, models = create_nerf(
         args)
 
     bds_dict = {
@@ -748,7 +757,7 @@ def train():
             test_timesteps.extend([timesteps[i]] * H * W)
         test_timesteps = np.asarray(test_timesteps)
         rgbs, _ = render_path(render_poses, hwf, test_timesteps, args.chunk, render_kwargs_test,
-                              gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor) 
+                              gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
         print('Done rendering', testsavedir)
         imageio.mimwrite(os.path.join(testsavedir, 'video.mp4'),
                          to8b(rgbs), fps=30, quality=8)
@@ -889,11 +898,11 @@ def train():
 
                 # Make predictions for color, disparity, accumulated opacity.
                 if use_batching:
-                    rgb, disp, acc, extras = render(  
+                    rgb, disp, acc, extras = render(
                         H, W, focal, batch_timestep, chunk=args.chunk, rays=batch_rays,
                         verbose=i < 10, retraw=True, **render_kwargs_train)
                 else:
-                    rgb, disp, acc, extras = render( 
+                    rgb, disp, acc, extras = render(
                         H, W, focal, timestep, chunk=args.chunk, rays=batch_rays,
                         verbose=i < 10, retraw=True, **render_kwargs_train)
 
@@ -928,21 +937,16 @@ def train():
                 for k in models:
                     save_weights(models[k], k, i)
 
-
-            if not flag or i % args.i_video == 0 and i > 0:
-                flag = True
+            if i % args.i_video == 0 and i > 0:
                 frame_savedir = os.path.join(
                     basedir, expname, 'frame_{:06d}'.format(i))
                 print(f"saving video at step {i}")
                 set_pose = poses[i_test[0]]
                 unseen_time = timesteps[i_test[0]]
                 sorted_timesteps = sorted(list(set(timesteps)))
-                idx = sorted_timesteps.index(unseen_time)
-                print("idx", idx)
                 # minidx = max(0, idx-20)
                 # maxidx = min(idx+21, len(sorted_timesteps))
                 # sorted_timesteps = sorted_timesteps[minidx:maxidx]
-                sorted_timesteps = sorted_timesteps[idx-5:idx+6]
                 if not os.path.exists(frame_savedir):
                     os.makedirs(frame_savedir)
                 rgbs, disps = render_timesteps(
