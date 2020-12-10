@@ -136,7 +136,7 @@ if __name__ == '__main__':
 
                 if args.use_viewdirs:
                     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
-                    rgbs_still, _ = render_path(
+                    rgbs_still, _ = render_timesteps(
                         render_poses, hwf, sorted_timesteps, args.chunk,
                         render_kwargs_test)
                     render_kwargs_test['c2w_staticcam'] = None
