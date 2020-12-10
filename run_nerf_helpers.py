@@ -153,7 +153,8 @@ def config_parser():
                         help='specific weights npy file to reload for coarse network')
     parser.add_argument("--random_seed", type=int, default=0,
                         help='fix random seed for repeatability')
-
+    parser.add_argument("--use_ckpts", action='store_true',
+                        help='use checkpoint saved at hardcoded path')
     # pre-crop options
     parser.add_argument("--precrop_iters", type=int, default=0,
                         help='number of steps to train on central crops')
@@ -861,7 +862,8 @@ def create_nerf(args):
     else:
         ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if
                  ('model_' in f and 'fine' not in f and 'optimizer' not in f)]
-    # ckpts = ['/home/sujipark/nerf/debug/model_000050.npy'] # TODO hardcode
+    if args.use_ckpts:
+        ckpts = ['/home/sujipark/nerf/debug/model_000050.npy'] # TODO hardcode
     print('Found ckpts')
     pprint(ckpts)
     if len(ckpts) > 0 and not args.no_reload:
