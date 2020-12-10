@@ -62,7 +62,7 @@ if __name__ == '__main__':
     optimizer = tf.keras.optimizers.Adam(args.lrate)
     save_dir =  os.path.join(basedir, 'summaries', expname)
     train_writer = SummaryWriter(save_dir + '/train')
-    test_writer = SummaryWriter(save_dir + '/test')
+    # test_writer = SummaryWriter(save_dir + '/test')
     global_step = tf.compat.v1.train.get_or_create_global_step()
     global_step.assign(start)
 
@@ -165,11 +165,11 @@ if __name__ == '__main__':
                 pbar.set_description(
                     f'[{expname}] ({i} | steps:{global_step.numpy()}) | ' +
                     f'loss: {loss.numpy():.5f} | PSNR: {psnr.numpy():.2f} |')
-                train_writer.add_scalar('loss', loss, i)
-                train_writer.add_scalar('psnr', psnr, i)
-                train_writer.add_histogram('tran', trans)
+                train_writer.add_scalar('loss', loss.numpy(), i)
+                train_writer.add_scalar('psnr', psnr.numpy(), i)
+                train_writer.add_histogram('tran', trans, i)
                 if args.N_importance > 0:
-                    train_writer.add_scalar('psnr0', psnr0, i)
+                    train_writer.add_scalar('psnr0', psnr0.numpy(), i)
 
                 # with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_print):
                 # tf.contrib.summary.scalar('loss', loss)
@@ -197,7 +197,7 @@ if __name__ == '__main__':
                         os.makedirs(testimgdir, exist_ok=True)
                     imageio.imwrite(os.path.join(
                         testimgdir, '{:06d}.png'.format(i)), to8b(rgb))
-                    train_writer.add_scalar('psnr_holdout', psnr, i)
+                    train_writer.add_scalar('psnr_holdout', psnr.numpy(), i)
                     train_writer.add_image('rgb', to8b(rgb)[tf.newaxis], i)
                     train_writer.add_image('disp', disp[tf.newaxis, ..., tf.newaxis], i)
                     train_writer.add_image('acc', acc[tf.newaxis, ..., tf.newaxis], i)
