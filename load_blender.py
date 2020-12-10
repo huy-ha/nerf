@@ -102,10 +102,10 @@ def load_blender_data(basedir, half_res=False, testskip=1, num_training=None):
     render_poses = tf.stack([pose_spherical(angle, -30.0, 6.0)
                              for angle in np.linspace(-180, 180, 40+1)[:-1]], 0)
 
-    if half_res:
-        H = H//2
-        W = W//2
-        imgs = tf.compat.v1.image.resize_area(imgs, [H, W]).numpy()
-        focal = focal/2.
+    # if half_res:
+    #     H = H//2
+    #     W = W//2
+    #     imgs = tf.compat.v1.image.resize_area(imgs, [H, W]).numpy()
+    #     focal = focal/2.
 
     return imgs, poses, render_poses, [H, W, focal], i_split, timesteps
