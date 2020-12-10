@@ -43,8 +43,13 @@ def load_blender_data(basedir, half_res=False, testskip=1, num_training=None):
     metas = {}
     for s in splits:
         if s == 'train' and num_training:
-            with open(os.path.join(basedir, 'transforms_{}_{}.json'.format(s, num_training)), 'r') as fp:
-                metas[s] = json.load(fp)
+            if num_training == -1:
+                print("heyyo")
+                with open(os.path.join(basedir, 'transforms_{}_total.json'.format(s)), 'r') as fp:
+                    metas[s] = json.load(fp)
+            else:
+                with open(os.path.join(basedir, 'transforms_{}_{}.json'.format(s, num_training)), 'r') as fp:
+                    metas[s] = json.load(fp)
         else:
             with open(os.path.join(basedir, 'transforms_{}.json'.format(s)), 'r') as fp:
                 metas[s] = json.load(fp)
