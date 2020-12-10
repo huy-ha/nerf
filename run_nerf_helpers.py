@@ -192,6 +192,8 @@ def config_parser():
                         help='options: llff / blender / deepvoxels')
     parser.add_argument("--testskip", type=int, default=1,
                         help='will load 1/N images from test/val sets, useful for large datasets like deepvoxels')
+    parser.add_argument("--num_training", type=int, default=None,
+                        help='number of images in training data for metatemporal')
 
     # deepvoxels flags
     parser.add_argument("--shape", type=str, default='greek',
@@ -220,7 +222,7 @@ def config_parser():
                         help='frequency of console printout and metric loggin')
     parser.add_argument("--i_img",     type=int, default=500,
                         help='frequency of tensorboard image logging')
-    parser.add_argument("--i_weights", type=int, default=10000,
+    parser.add_argument("--i_weights", type=int, default=100,
                         help='frequency of weight ckpt saving')
     parser.add_argument("--i_testset", type=int, default=50000,
                         help='frequency of testset saving')
@@ -681,9 +683,9 @@ def render(H, W, focal, timestep_embed,
     return ret_list + [ret_dict]
 
 
-def load_data(scene_dir_path, white_bkgd, half_res, testskip):
+def load_data(scene_dir_path, white_bkgd, half_res, testskip, num_training=None):
     images, poses, render_poses, hwf, i_split, timesteps = load_blender_data(
-        scene_dir_path, half_res, testskip)
+        scene_dir_path, half_res, testskip, num_training)
 
     if white_bkgd:
         images = images[..., :3]*images[..., -1:] + (1.-images[..., -1:])

@@ -49,7 +49,8 @@ if __name__ == '__main__':
         load_data(scene_dir_path=args.datadir,
                   white_bkgd=args.white_bkgd,
                   half_res=args.half_res,
-                  testskip=args.testskip)
+                  testskip=args.testskip,
+                  num_training=args.num_training)
     # Cast intrinsics to right types
     H, W, focal = hwf
     H, W = int(H), int(W)
