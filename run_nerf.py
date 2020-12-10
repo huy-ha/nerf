@@ -197,10 +197,10 @@ if __name__ == '__main__':
                     imageio.imwrite(os.path.join(
                         testimgdir, '{:06d}.png'.format(i)), to8b(rgb))
                     train_writer.add_scalar('psnr_holdout', psnr.numpy(), i)
-                    train_writer.add_image('rgb', to8b(rgb)[tf.newaxis], i)
-                    train_writer.add_image('disp', disp[tf.newaxis, ..., tf.newaxis], i)
-                    train_writer.add_image('acc', acc[tf.newaxis, ..., tf.newaxis], i)
-                    train_writer.add_image('rgb_holdout', target[tf.newaxis], i)
+                    train_writer.add_image('rgb',np.squeeze(to8b(rgb)[tf.newaxis], axis=0), i, dataformats='HWC')
+                    train_writer.add_image('disp', np.squeeze(disp[tf.newaxis, ..., tf.newaxis], axis=0), i, dataformats='HWC')
+                    train_writer.add_image('acc', np.squeeze(acc[tf.newaxis, ..., tf.newaxis], axis=0), i, dataformats='HWC')
+                    train_writer.add_image('rgb_holdout', np.squeeze(target[tf.newaxis], axis=0), i, dataformats='HWC')
                     # with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
 
                     # tf.contrib.summary.image('rgb', to8b(rgb)[tf.newaxis])
@@ -214,9 +214,9 @@ if __name__ == '__main__':
                     #     'rgb_holdout', target[tf.newaxis])
 
                     if args.N_importance > 0:
-                        train_writer.add_image('rgb0', to8b(extras['rgb0'])[tf.newaxis], i)
-                        train_writer.add_image('disp0', extras['disp0'][tf.newaxis, ..., tf.newaxis], i)
-                        train_writer.add_image('z_std', extras['z_std'][tf.newaxis, ..., tf.newaxis], i)
+                        train_writer.add_image('rgb0', np.squeeze(to8b(extras['rgb0'])[tf.newaxis], axis=0), i, dataformats='HWC')
+                        train_writer.add_image('disp0', np.squeeze(extras['disp0'][tf.newaxis, ..., tf.newaxis], axis=0), i, dataformats='HWC')
+                        train_writer.add_image('z_std', np.squeeze(extras['z_std'][tf.newaxis, ..., tf.newaxis], axis=0), i, dataformats='HWC')
                         # with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
                         # tf.contrib.summary.image(
                         #     'rgb0', to8b(extras['rgb0'])[tf.newaxis])
