@@ -31,7 +31,7 @@ def train(models, grad_vars,
           meta_iters=400000,
           inner_learning_rate=1e-3,
           eval_interval=10,
-          log_qualitative_train=1,
+          log_qualitative_train=5,
           time_deadline=None,
           log_fn=print):
     """
@@ -102,7 +102,7 @@ def train(models, grad_vars,
             output += f'Final PSNR: {loss_dict["psnr/final/test"]:.2f} )'
             log_fn(output)
 
-        if i % 100 == 0 or i == meta_iters-1:
+        if i % 2 == 0 or i == meta_iters-1:
             for key in models:
                 path = os.path.join(
                     save_dir, '{}_{:06d}.npy'.format(key, i))

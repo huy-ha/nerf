@@ -45,7 +45,7 @@ if __name__ == '__main__':
         create_nerf(args)
 
     # Load data
-    _, images, poses, render_poses, hwf, i_split = \
+    _, images, poses, render_poses, hwf, i_split, timesteps = \
         load_data(scene_dir_path=args.datadir,
                   white_bkgd=args.white_bkgd,
                   half_res=args.half_res,
@@ -64,8 +64,16 @@ if __name__ == '__main__':
 
     # Prepare raybatch tensor if batching random rays
     N_rand = args.N_rand
+    args.no_batching = False
     assert not args.no_batching
     rays_rgb = create_ray_batches(H, W, focal, poses, images, i_train)
+    train_timesteps = []
+    for i in i_train:
+        train_timesteps.extend([timesteps[i]] * H * W)
+    train_timesteps = np.asarray(train_timesteps)
+    idxs = np.random.permutation(rays_rgb.shape[0])
+    rays_rgb = rays_rgb[idxs]
+    train_timesteps = train_timesteps[idxs]
     i_batch = 0
     print('Begin')
     print('TRAIN views are', i_train)
@@ -81,6 +89,7 @@ if __name__ == '__main__':
         for i in pbar:
             time0 = time.time()
             batch = rays_rgb[i_batch:i_batch+N_rand]  # [B, 2+1, 3*?]
+            batch_timestep = train_timesteps[i_batch: i_batch + N_rand]
             batch = tf.transpose(batch, [1, 0, 2])
             batch_rays, target_s = batch[:2], batch[2]
             i_batch += N_rand
@@ -96,6 +105,7 @@ if __name__ == '__main__':
                 H=H, W=W, focal=focal,
                 grad_vars=grad_vars,
                 optimizer=optimizer,
+                batch_timestep=batch_timestep,
                 render_kwargs_train=render_kwargs_train)
             dt = time.time()-time0
 
@@ -114,12 +124,11 @@ if __name__ == '__main__':
                     save_weights(models[k], k, i)
 
             if i % args.i_video == 0 and i > 0:
-
-                rgbs, disps = render_path(
-                    render_poses, hwf, args.chunk, render_kwargs_test)
-                print('Done, saving', rgbs.shape, disps.shape)
+                sorted_timesteps = sorted(list(set(timesteps)))
+                rgbs, disps = render_timesteps(
+                    poses[i_test[0]], hwf, sorted_timesteps, args.chunk, render_kwargs_test)
                 moviebase = os.path.join(
-                    basedir, expname, '{}_spiral_{:06d}_'.format(expname, i))
+                    basedir, expname,  '{}_temporal_{:06d}_'.format(expname, i))
                 imageio.mimwrite(moviebase + 'rgb.mp4',
                                  to8b(rgbs), fps=30, quality=8)
                 imageio.mimwrite(moviebase + 'disp.mp4',
@@ -128,7 +137,8 @@ if __name__ == '__main__':
                 if args.use_viewdirs:
                     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
                     rgbs_still, _ = render_path(
-                        render_poses, hwf, args.chunk, render_kwargs_test)
+                        render_poses, hwf, sorted_timesteps, args.chunk,
+                        render_kwargs_test)
                     render_kwargs_test['c2w_staticcam'] = None
                     imageio.mimwrite(moviebase + 'rgb_still.mp4',
                                      to8b(rgbs_still), fps=30, quality=8)
@@ -137,9 +147,13 @@ if __name__ == '__main__':
                 testsavedir = os.path.join(
                     basedir, expname, 'testset_{:06d}'.format(i))
                 os.makedirs(testsavedir, exist_ok=True)
+                split_timesteps = []
+                for i in i_test:
+                    split_timesteps.extend([timesteps[i]] * H * W)
+                split_timesteps = np.asarray(split_timesteps)
                 print('test poses shape', poses[i_test].shape)
-                render_path(poses[i_test], hwf, args.chunk, render_kwargs_test,
-                            gt_imgs=images[i_test], savedir=testsavedir)
+                render_path(poses[i_test], hwf, split_timesteps, args.chunk,
+                            render_kwargs_test, gt_imgs=images[i_test], savedir=testsavedir)
                 print('Saved test set')
 
             if i % args.i_print == 0 or i < 10:
@@ -159,8 +173,8 @@ if __name__ == '__main__':
                     img_i = np.random.choice(i_val)
                     target = images[img_i]
                     pose = poses[img_i, :3, :4]
-
-                    rgb, disp, acc, extras = render(H, W, focal, chunk=args.chunk, c2w=pose,
+                    split_timestep = [timesteps[img_i]] * (H*W)
+                    rgb, disp, acc, extras = render(H, W, focal, split_timestep, chunk=args.chunk, c2w=pose,
                                                     **render_kwargs_test)
 
                     psnr = mse2psnr(img2mse(rgb, target))

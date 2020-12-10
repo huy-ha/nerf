@@ -99,11 +99,14 @@ def run_network(inputs, viewdirs, timestep, fn, embed_fn, embeddirs_fn, time_emb
         embedded_dirs = embeddirs_fn(input_dirs_flat)
         # embedded = tf.concat([embedded, embedded_dirs], -1)
         timestep_broadcast = tf.constant(timestep, dtype=tf.float32)  # 1024
-        timestep_broadcast = tf.broadcast_to(timestep_broadcast[:, None, None], inputs.shape)
-        timestep_broadcast = tf.reshape(timestep_broadcast, [-1, timestep_broadcast.shape[-1]])  # 65536 x 27
+        timestep_broadcast = tf.broadcast_to(
+            timestep_broadcast[:, None, None], inputs.shape)
+        timestep_broadcast = tf.reshape(
+            timestep_broadcast, [-1, timestep_broadcast.shape[-1]])  # 65536 x 27
         embedded_time = time_embed_fn(timestep_broadcast)  # 65536 x 9
         # timestep_broadcast = tf.broadcast_to(timestep_broadcast, shape=(embedded.shape[0],1))
-        embedded = tf.concat([embedded, embedded_dirs, embedded_time], -1)  # 65536 x 99
+        embedded = tf.concat(
+            [embedded, embedded_dirs, embedded_time], -1)  # 65536 x 99
 
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = tf.reshape(outputs_flat, list(
@@ -240,8 +243,10 @@ def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, input_t=1, output_
     input_ch_views = int(input_ch_views)
 
     inputs = tf.keras.Input(shape=(input_ch + input_ch_views + input_t))
-    print("input_ch + input_ch_views + input_t", input_ch + input_ch_views + input_t)
-    inputs_pts, inputs_views, input_timestep = tf.split(inputs, [input_ch, input_ch_views, input_t], -1)
+    print("input_ch + input_ch_views + input_t",
+          input_ch + input_ch_views + input_t)
+    inputs_pts, inputs_views, input_timestep = tf.split(
+        inputs, [input_ch, input_ch_views, input_t], -1)
     # inputs_pts, inputs_views = tf.split(inputs, [input_ch, input_ch_views], -1)
     inputs_pts.set_shape([None, input_ch])  # (?, 63)
     inputs_views.set_shape([None, input_ch_views])  # (?, 27)
@@ -250,7 +255,8 @@ def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, input_t=1, output_
     # print("inputs {}, inputs_pts {}, inputs_views {}, input_timestep {}".format(inputs.shape, inputs_pts.shape,
     #                                                                             inputs_views.shape,
     #                                                                             input_timestep.shape))
-    outputs = tf.concat([inputs_pts, input_timestep], -1)  # (?, 90) # inputs_pts
+    outputs = tf.concat([inputs_pts, input_timestep], -
+                        1)  # (?, 90) # inputs_pts
     for i in range(D):
         outputs = dense(W)(outputs)
         if i in skips:
@@ -571,7 +577,8 @@ def batchify_rays(rays_flat, timestep_embed, chunk=1024*32, **kwargs):
     """Render rays in smaller minibatches to avoid OOM."""
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
-        ret = render_rays(rays_flat[i:i+chunk], timestep_embed[i:i+chunk], **kwargs)
+        ret = render_rays(rays_flat[i:i+chunk],
+                          timestep_embed[i:i+chunk], **kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -684,6 +691,7 @@ def load_data(scene_dir_path, white_bkgd, half_res, testskip):
         images = images[..., :3]
     return os.path.basename(scene_dir_path), images, poses, render_poses, hwf, i_split, timesteps
 
+
 def render_timesteps(c2w, hwf, sorted_timesteps, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
     """
     Render temporal dimension
@@ -729,6 +737,7 @@ def render_timesteps(c2w, hwf, sorted_timesteps, chunk, render_kwargs, gt_imgs=N
     disps = np.stack(disps, 0)
 
     return rgbs, disps
+
 
 def render_path(render_poses, hwf, timestep_embed, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0, log=False):
 
@@ -803,7 +812,6 @@ def create_nerf(args):
             input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs, input_t=input_t)
         grad_vars += model_fine.trainable_variables
         models['model_fine'] = model_fine
-
 
     def network_query_fn(inputs, viewdirs, timestep_embed, network_fn):
         return run_network(

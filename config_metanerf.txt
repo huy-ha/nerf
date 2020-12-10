@@ -14,7 +14,7 @@ white_bkgd = True
 
 N_rand = 1024
 
-inner-iters = 512
+inner-iters = 128
 meta-batch = 2
 meta-iters = 100000
 eval-interval = 100
