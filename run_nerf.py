@@ -125,8 +125,9 @@ if __name__ == '__main__':
 
             if i % args.i_video == 0 and i > 0:
                 sorted_timesteps = sorted(list(set(timesteps)))
+                set_pose = poses[i_test[0]]
                 rgbs, disps = render_timesteps(
-                    poses[i_test[0]], hwf, sorted_timesteps, args.chunk, render_kwargs_test)
+                    set_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test)
                 moviebase = os.path.join(
                     basedir, expname,  '{}_temporal_{:06d}_'.format(expname, i))
                 imageio.mimwrite(moviebase + 'rgb.mp4',
@@ -137,7 +138,7 @@ if __name__ == '__main__':
                 if args.use_viewdirs:
                     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
                     rgbs_still, _ = render_timesteps(
-                        render_poses, hwf, sorted_timesteps, args.chunk,
+                        set_pose, hwf, sorted_timesteps, args.chunk,
                         render_kwargs_test)
                     render_kwargs_test['c2w_staticcam'] = None
                     imageio.mimwrite(moviebase + 'rgb_still.mp4',
