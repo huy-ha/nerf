@@ -864,7 +864,7 @@ def create_nerf(args):
     if len(ckpts) > 0 and not args.no_reload:
         ft_weights = ckpts[-1]
         print('Reloading from', ft_weights)
-        model = tf.keras.models.load_model(ft_weights)
+        model.set_weights(np.load(ft_weights, allow_pickle=True))
         start = int(ft_weights[-10:-4]) + 1
         print('Resetting step to', start)
 
@@ -872,7 +872,7 @@ def create_nerf(args):
             ft_weights_fine = '{}_fine_{}'.format(
                 ft_weights[:-11], ft_weights[-10:])
             print('Reloading fine from', ft_weights_fine)
-            model_fine = tf.keras.models.load_model(ft_weights_fine)
+            model_fine.set_weights(np.load(ft_weights_fine, allow_pickle=True))
 
     return render_kwargs_train, render_kwargs_test, start, grad_vars, models
 

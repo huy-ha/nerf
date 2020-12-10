@@ -51,7 +51,7 @@ def train(models, grad_vars,
         frac_done = i / meta_iters
         cur_meta_step_size = frac_done * meta_step_size_final + \
             (1 - frac_done) * meta_step_size
-        loss, psnr, psnr0, trans = \
+        loss_dict = \
             meta_step(models=models,
                       dataset=train_set,
                       N_rand=N_rand,
@@ -71,12 +71,14 @@ def train(models, grad_vars,
                       writer=train_writer,
                       save_dir=save_dir,
                       log_qualitative=i % log_qualitative_train == 0)
-        pbar.set_description(f'Outer Loss: {float(loss):.02e}')
-        train_writer.add_scalar('loss', loss, i)
-        train_writer.add_scalar('psnr', psnr, i)
-        train_writer.add_histogram('tran', trans, i)
-        if N_importance > 0:
-            train_writer.add_scalar('psnr0', psnr0, i)
+        pbar.set_description(
+            f'Outer Loss: {float(loss_dict["loss/mean"]):.02e}')
+        for key, value in loss_dict.items():
+            if 'tran' in key:
+                train_writer.add_histogram(key, value, i)
+            elif 'psnr0' not in key or N_importance > 0:
+                train_writer.add_scalar(key, value, i)
+
         if i % eval_interval == 0 and i > 0:
             print('#'*10 + ' EVAL ' + '#'*10)
             loss_dict =\
@@ -106,7 +108,7 @@ def train(models, grad_vars,
             for key in models:
                 path = os.path.join(
                     save_dir, '{}_{:06d}.npy'.format(key, i))
-                models[key].save(path)
+                np.save(path, models[key].get_weights())
                 print('Saved weights at', path)
         if time_deadline is not None and time.time() > time_deadline:
             break

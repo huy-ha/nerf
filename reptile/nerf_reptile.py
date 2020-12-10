@@ -18,7 +18,6 @@ import os
 import imageio
 from copy import deepcopy
 from tqdm import tqdm
-# tf.compat.v1.enable_eager_execution()
 
 
 def set_variables(models, variables):
@@ -71,8 +70,10 @@ def meta_step(models,
         idxs = np.random.permutation(rays_rgb.shape[0])
         rays_rgb = rays_rgb[idxs]
         train_timesteps = train_timesteps[idxs]
-
-
+        losses.append([])
+        psnrs.append([])
+        psnr0s.append([])
+        transs.append([])
         for batch_idx, batch in enumerate(range(inner_iters)):
             batch = rays_rgb[i_batch:i_batch+N_rand]  # [B, 2+1, 3*?]
             batch_timestep = train_timesteps[i_batch: i_batch + N_rand]
@@ -98,10 +99,10 @@ def meta_step(models,
                 inner_iters * scene_id + batch_idx
             writer.add_scalar('metatrain_loss', float(loss), step)
             writer.add_scalar('metatrain_psnr', float(psnr), step)
-            losses.append(loss)
-            psnrs.append(psnr)
-            psnr0s.append(psnr0 if psnr0 is not None else 0.0)
-            transs.append(trans)
+            losses[-1].append(loss)
+            psnrs[-1].append(psnr)
+            psnr0s[-1].append(psnr0)
+            transs[-1].append(trans)
         new_vars.append({k: deepcopy(v.get_weights())
                          for k, v in models.items()})
         if log_qualitative:
@@ -127,7 +128,28 @@ def meta_step(models,
         k: interpolate_vars(
             old_vars[k], new_vars[k], meta_step_size)
         for k in new_vars.keys()})
-    return np.mean(losses), np.mean(psnrs), np.mean(psnr0s), np.mean(transs)
+    losses = np.array(losses)
+    psnrs = np.array(psnrs)
+    psnr0s = np.array(psnr0s)
+    transs = np.array(transs)
+    return {
+        'loss/init': np.mean(losses[:, 0]),
+        'psnr/init': np.mean(psnrs[:, 0]),
+        'psnr0/init': np.mean(psnr0s[:, 0]),
+        'trans/init': np.mean(transs[:, 0]),
+        'loss/mean': np.mean(losses),
+        'psnr/mean': np.mean(psnrs),
+        'psnr0/mean': np.mean(psnr0s),
+        'trans/mean': np.mean(transs),
+        'loss/final': np.mean(losses[:, -1]),
+        'psnr/final': np.mean(psnrs[:, -1]),
+        'psnr0/final': np.mean(psnr0s[:, -1]),
+        'trans/final': np.mean(transs[:, -1]),
+        'loss/improvement': np.mean(losses[:, -1] - losses[:, 0]),
+        'psnr/improvement': np.mean(psnrs[:, -1] - psnrs[:, 0]),
+        'psnr0/improvement': np.mean(psnr0s[:, -1] - psnr0s[:, 0]),
+        'trans/improvement': np.mean(transs[:, -1] - transs[:, 0]),
+    }
 
 
 def get_losses(batch_rays,
@@ -287,7 +309,6 @@ def meta_evaluate(models,
         idxs = np.random.permutation(rays_rgb.shape[0])
         rays_rgb = rays_rgb[idxs]
         val_timesteps = val_timesteps[idxs]
-
 
         scene_losses = []
         scene_psnrs = []
