@@ -157,7 +157,7 @@ if __name__ == '__main__':
                     rgbs, disps = render_path(
                         render_poses, hwf,unseen_t, args.chunk, render_kwargs_test)
                     moviebase = os.path.join(
-                        basedir, expname, '{}_spiral_{:06d}_unseen_timestep'.format(expname, i))
+                        basedir, expname, '{}_spiral_{:06d}_unseen_timestep_{}'.format(expname, i, t))
                     imageio.mimwrite(moviebase + 'rgb.mp4',
                                      to8b(rgbs), fps=30, quality=8)
                     imageio.mimwrite(moviebase + 'disp.mp4',
