@@ -152,7 +152,7 @@ if __name__ == '__main__':
                                      to8b(rgbs_still), fps=30, quality=8)
                 # render at unseen timestep
                 for t in unseen_timesteps:
-                    unseen_t = [t] * (H * W)
+                    unseen_t = np.array([t] * (H * W))
                     rgbs, disps = render_path(
                         poses, hwf,unseen_t, args.chunk, render_kwargs_test)
                     moviebase = os.path.join(
