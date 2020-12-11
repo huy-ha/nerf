@@ -131,7 +131,7 @@ if __name__ == '__main__':
                 sorted_timesteps = sorted(list(set(timesteps)))
                 unseen_timesteps = [1, 35]
                 unseen_pose = np.load("/home/sujipark/nerf/debug/277/view_to_remove.npy")
-                set_pose = poses[i_test[0]]
+                # set_pose = poses[i_test[0]]
                 # render at unseen view
                 rgbs, disps = render_timesteps(
                     unseen_pose, hwf, sorted_timesteps, args.chunk, render_kwargs_test)
@@ -152,8 +152,9 @@ if __name__ == '__main__':
                                      to8b(rgbs_still), fps=30, quality=8)
                 # render at unseen timestep
                 for t in unseen_timesteps:
+                    unseen_t = [t] * (H * W)
                     rgbs, disps = render_path(
-                        set_pose, hwf, [t] * (H* W), args.chunk, render_kwargs_test)
+                        poses, hwf,unseen_t, args.chunk, render_kwargs_test)
                     moviebase = os.path.join(
                         basedir, expname, '{}_spiral_{:06d}_unseen_timestep'.format(expname, i))
                     imageio.mimwrite(moviebase + 'rgb.mp4',
@@ -164,7 +165,7 @@ if __name__ == '__main__':
                     if args.use_viewdirs:
                         render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
                         rgbs_still, _ = render_path(
-                            set_pose, hwf, [t] * (H * W), args.chunk,
+                            poses, hwf, unseen_t, args.chunk,
                             render_kwargs_test)
                         render_kwargs_test['c2w_staticcam'] = None
                         imageio.mimwrite(moviebase + 'rgb_still.mp4',
