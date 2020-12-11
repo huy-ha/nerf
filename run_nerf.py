@@ -155,7 +155,7 @@ if __name__ == '__main__':
                 for t in unseen_timesteps:
                     unseen_t = np.array([t] * (H * W))
                     rgbs, disps = render_path(
-                        poses, hwf,unseen_t, args.chunk, render_kwargs_test)
+                        render_poses, hwf,unseen_t, args.chunk, render_kwargs_test)
                     moviebase = os.path.join(
                         basedir, expname, '{}_spiral_{:06d}_unseen_timestep'.format(expname, i))
                     imageio.mimwrite(moviebase + 'rgb.mp4',
@@ -166,7 +166,7 @@ if __name__ == '__main__':
                     if args.use_viewdirs:
                         render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]
                         rgbs_still, _ = render_path(
-                            poses, hwf, unseen_t, args.chunk,
+                            render_poses, hwf, unseen_t, args.chunk,
                             render_kwargs_test)
                         render_kwargs_test['c2w_staticcam'] = None
                         imageio.mimwrite(moviebase + 'rgb_still.mp4',
